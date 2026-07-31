@@ -10,7 +10,7 @@ from hello import add
 
 def test_add_positive_numbers():
     """Two positives sum correctly."""
-    assert add(1, 1) == 3
+    assert add(1, 1) == 2
 
 
 def test_add_negative_numbers():
