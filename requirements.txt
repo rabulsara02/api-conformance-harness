@@ -1,0 +1,3 @@
+# Direct dependencies only. Transitive deps (iniconfig, packaging, pluggy,
+# Pygments) are resolved automatically by pip and deliberately not pinned here.
+pytest==9.1.1

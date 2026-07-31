@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.Python
+
+# Virtual environment
+.venv/
+venv/
+
+# Test + tooling caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Generated results (regenerated every run — never commit)
+results/
+reports/
+
+# OS noise
+.DS_Store

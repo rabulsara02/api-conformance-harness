@@ -1,0 +1,28 @@
+# Runs the test suite on every push and pull request.
+# Day 1: proves the pipeline works. Grows into the full contract suite
+# (Day 16), plus a separate nightly flake-detection sweep.
+name: CI
+
+# WHEN this runs.
+on: [push, pull_request]
+
+jobs:
+  test:
+    # WHERE it runs: a fresh Ubuntu machine GitHub provides, wiped each time.
+    runs-on: ubuntu-latest
+
+    steps:
+      # Copy the repo onto the runner. Nothing exists there until this runs.
+      - uses: actions/checkout@v4
+
+      # Install Python. Matches local 3.13.1 so bugs can't hide in the gap.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # Install dependencies. The runner starts empty and knows nothing about
+      # your laptop — this file is the only thing it has to go on.
+      - run: pip install -r requirements.txt
+
+      - name: Unit tests
+        run: pytest -v
