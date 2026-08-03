@@ -72,9 +72,15 @@ Carried forward from project 1, plus three new ones.
    Captured in `LEARNING_NOTES.md`. You don't have to ask.
 7. **You write and push the code.** Every step verified with `pytest` **and** a
    live run before moving on.
-   - **Doc convention:** every code block in every checklist starts at the left
-     margin — never nested inside a list item — so it copy-pastes cleanly with no
-     leading whitespace. Checkbox lines sit *above* the block, not around it.
+   - **Doc convention — code blocks:** every code block in every checklist starts
+     at the left margin — never nested inside a list item — so it copy-pastes
+     cleanly with no leading whitespace. Checkbox lines sit *above* the block.
+   - **Doc convention — diagrams:** all diagrams use ```mermaid fenced blocks,
+     never ASCII art. GitHub renders Mermaid natively in markdown (no plugin, no
+     build step), so diagrams stay readable in the repo and legible to anyone
+     browsing it. Match project 1's README style: `flowchart LR` or `TB`,
+     `subgraph` for grouping, `<br/>` for line breaks inside node labels, and
+     dotted arrows (`-.->`) for return paths or secondary flows.
 8. **NEW — Ground truth or it doesn't count.** Every accuracy number in this
    project must be measured against **deliberately labeled** faults. Seeded bugs
    are labeled with their true category; seeded flaky tests are labeled with
@@ -161,28 +167,60 @@ number meaningful.
 
 ## 4. Architecture (the mental model)
 
+**The request path** — what happens when a test case runs:
+
+```mermaid
+flowchart LR
+    YAML["<b>YAML test plans</b><br/><i>declarative cases</i>"]
+    TR["<b>transport.py</b><br/>Transport interface<br/><i>direct or via-proxy</i>"]
+    PX["<b>fault proxy</b><br/>latency · 500/503/429<br/>corrupt body · drop conn"]
+    API["<b>FastAPI service</b><br/>device registry<br/><i>+ seeded bug modes</i>"]
+
+    YAML --> TR
+    TR -->|HTTP request| PX
+    PX -->|HTTP request| API
+    API -.->|response| PX
+    PX -.->|response| TR
 ```
-   openapi.json  ──────────┐   (the contract — pinned, versioned)
-   (exported from FastAPI)  │
-                            ▼
-  YAML test plans ──▶  pytest harness  ──▶ HTTP ──▶ fault proxy ──▶ FastAPI service
-   (declarative)        │ - HttpTransport (interface)   (latency,      (device registry
-                        │ - contract validator           500/503/429,   + seeded bug
-                        │   · status declared?           corrupt body,   modes)
-                        │   · content-type?              drop conn)
-                        │   · body vs JSON Schema
-                        │ - schemathesis fuzz layer
-                        │ - repeat-runner (N passes)
-                        │ - flake detector (statistics)
-                        │ - classifier (4 categories)
-                        ▼
-              JSON run summary  ──▶  JUnit XML  +  HTML report
-              (per-case latency,      (CI-consumable)  (flake scores,
-               violations, history)                     fault categories)
-                        │
-                        ▼
-              GitHub Actions: per-push suite + nightly flake sweep
+
+**The verdict path** — how a response becomes a classified result:
+
+```mermaid
+flowchart TB
+    SPEC["<b>spec/openapi.json</b><br/>the contract<br/><i>pinned + versioned</i>"]
+
+    subgraph HARNESS["Harness"]
+        direction TB
+        VAL["<b>validator.py</b><br/>status declared?<br/>content-type?<br/>body vs JSON Schema"]
+        FUZZ["<b>schemathesis layer</b><br/><i>property-based fuzzing</i>"]
+        REP["<b>repeat.py</b><br/><i>run the suite N times</i>"]
+        FLK["<b>flake.py</b><br/>flip rate + Wilson CI"]
+        CLS["<b>classifier.py</b><br/>service bug · test bug<br/>flake · environment"]
+
+        VAL --> CLS
+        FUZZ --> CLS
+        REP --> FLK --> CLS
+    end
+
+    RESP(["HTTP response<br/><i>from the request path</i>"])
+    JSON["<b>JSON run summary</b><br/><i>latency · violations · history</i>"]
+    JUNIT["<b>JUnit XML</b><br/><i>CI-consumable</i>"]
+    HTML["<b>HTML report</b><br/><i>flake scores + categories</i>"]
+    CI["<b>GitHub Actions</b><br/>per-push suite<br/>+ nightly flake sweep"]
+
+    SPEC --> VAL
+    RESP --> VAL
+    CLS --> JSON
+    JSON --> JUNIT
+    JSON --> HTML
+    JUNIT --> CI
+    HTML --> CI
 ```
+
+The split into two diagrams is deliberate: the first is **how a request travels**,
+the second is **how a result is judged**. Keeping them separate is also the
+cleanest way to explain the system out loud — most people try to draw both at
+once and lose the listener.
 
 **Read it against project 1** — the correspondence is one-to-one, and this table
 is the backbone of your "how do these two projects relate" interview answer:

@@ -19,10 +19,22 @@ section), because Day 2 needs it.
 
 ## Progress log (updated as we go)
 
-**Status: Parts A–E complete. Environment verified clean and at parity with
-project 1. Part F (CI workflow) next.**
+**Status: ✅ DAY 1 COMPLETE.** Repo live, CI green, failure detection proven.
 
-Verification captured at close of Part E:
+**Done-when gate met.** Three commits on `main`, CI green → red → green:
+
+```
+a392567  CI catches breaks, looks good
+9ecb427  Making sure CI actually catches failsures (deliberate break)
+7d5a4a5  repo setup, CI skeleton, pipeline smoke test
+```
+
+Repo: `git@github.com:rabulsara02/api-conformance-harness.git` (public, MIT).
+11 tracked files; `.venv`, `__pycache__`, `.pytest_cache`, `.DS_Store` all
+correctly ignored (verified individually with `git check-ignore`, not by
+eyeballing `.gitignore`).
+
+Environment verified at close of Part E:
 
 ```
 platform darwin -- Python 3.13.1, pytest-9.1.1, pluggy-1.6.0
@@ -32,7 +44,13 @@ collected 2 items
 ```
 
 All three checks green: `which pytest` resolves inside `.venv/bin/`, the
-interpreter line points at `.venv/bin/python`, and no stray plugins are loaded.
+interpreter line points at `.venv/bin/python`, and no stray plugins load.
+
+**Deviations from plan:** none in outcome. Two environment bugs hit and fixed en
+route (below) — both worth keeping, both now interview material.
+
+**Carry-forward to Day 2:** confirm Docker Desktop is installed and
+`docker run hello-world` succeeds. It is the only Day 2 prerequisite.
 
 - **Confirmed versions.** Python **3.13.1** locally, so CI is pinned to `"3.13"`.
   pytest resolved to **9.1.1**. Both match project 1's machine.
@@ -188,8 +206,15 @@ meet in section 4.
 
 The normal daily rhythm, which you'll repeat ~50 times over this project:
 
-```
-edit files  →  git add  →  git commit -m "message"  →  git push
+```mermaid
+flowchart LR
+    E["<b>edit files</b><br/><i>work in your editor</i>"]
+    A["<b>git add</b><br/><i>stage the changes</i>"]
+    C["<b>git commit</b><br/><i>save a snapshot<br/>+ a message</i>"]
+    P["<b>git push</b><br/><i>upload to GitHub</i>"]
+
+    E --> A --> C --> P
+    P -.->|triggers| CI["<b>GitHub Actions</b><br/><i>runs your tests</i>"]
 ```
 
 **Why an employer cares:** your commit history is visible. A repo with 60 small,
@@ -398,19 +423,19 @@ error for a first-timer. Empty remote + existing local folder avoids it entirely
 
 **1. Create the repo.** github.com → **+** (top right) → **New repository**.
 
-- [ ] **Name:** `api-conformance-harness`
-- [ ] **Description:** `Contract conformance + flaky-test detection harness for REST APIs`
-- [ ] **Visibility:** **Public** (employers have to be able to see it)
-- [ ] **Do NOT check "Add a README file."**
-- [ ] **Do NOT** add a `.gitignore`. **Do NOT** add a license.
-- [ ] Click **Create repository**
+- [x] **Name:** `api-conformance-harness`
+- [x] **Description:** `Contract conformance + flaky-test detection harness for REST APIs`
+- [x] **Visibility:** **Public** (employers have to be able to see it)
+- [x] **Do NOT check "Add a README file."**
+- [x] **Do NOT** add a `.gitignore`. **Do NOT** add a license.
+- [x] Click **Create repository**
 
 ✅ *Worked when:* you land on a mostly-empty page showing setup instructions like
 `git remote add origin ...`. That's the right screen.
 
 **2. Copy the SSH address.**
 
-- [ ] On that page, click the **SSH** tab (not HTTPS) and copy the address. It
+- [x] On that page, click the **SSH** tab (not HTTPS) and copy the address. It
       looks like `git@github.com:<your-username>/api-conformance-harness.git`.
 
 *Why SSH:* you set up SSH keys during project 1, so pushes just work with no
@@ -430,7 +455,7 @@ planning docs in it.
 
 **3. Go to the folder and start tracking it with git.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cd ~/Projects/software-testing
@@ -445,7 +470,7 @@ repository — all history lives there. Delete it and you're back to a plain fol
 
 **4. Make sure the branch is called `main`.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 git branch -M main
@@ -456,7 +481,7 @@ it's already right.
 
 **5. Point your folder at GitHub.**
 
-- [ ] Paste the address from step 2 into the first line, then run both:
+- [x] Paste the address from step 2 into the first line, then run both:
 
 ```bash
 git remote add origin git@github.com:<your-username>/api-conformance-harness.git
@@ -476,7 +501,7 @@ keyword — you could call it anything, but everyone calls it `origin`.
 **6. Create `.gitignore`.** This lists files git should *not* track — things that
 are generated, machine-specific, or huge.
 
-- [ ] Create the file with this content:
+- [x] Create the file with this content:
 
 ```
 # Python
@@ -509,7 +534,7 @@ professionalism to anyone reading your repo.
 
 **7. Add an MIT license.**
 
-- [ ] Create a file named `LICENSE` and paste the MIT license text (copy it from
+- [x] Create a file named `LICENSE` and paste the MIT license text (copy it from
       your `modem-conformance-harness/LICENSE`, and update the year/name line if
       needed).
 
@@ -520,7 +545,7 @@ copyright notice." It's the standard for portfolio work.
 **8. Create a `README.md` stub.** One paragraph is enough for now — Day 17
 rewrites it properly as a test plan.
 
-- [ ] Create `README.md` with this content:
+- [x] Create `README.md` with this content:
 
 ```markdown
 # api-conformance-harness
@@ -547,7 +572,7 @@ Software-domain companion to
 
 **9. Check your Python version.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 python3 --version
@@ -560,7 +585,7 @@ way to spend an afternoon.
 
 **10. Create the virtual environment.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 python3 -m venv .venv
@@ -573,13 +598,13 @@ at the top of this file.)
 
 **11. Activate it — then PROVE it's active.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 source .venv/bin/activate
 ```
 
-- [ ] Now verify, and do not skip this:
+- [x] Now verify, and do not skip this:
 
 ```bash
 which python
@@ -601,7 +626,7 @@ why it's a gate here and not a suggestion.
 
 **12. Install pytest and record it.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 python -m pip install --upgrade pip
@@ -645,7 +670,7 @@ description of your project.
 dependencies, pulled in automatically. Project 1's `requirements.txt` keeps only
 the packages the project *directly* uses and comments the rest out. Match that.
 
-- [ ] Edit `requirements.txt` down to:
+- [x] Edit `requirements.txt` down to:
 
 ```
 # Direct dependencies only. Transitive deps (iniconfig, packaging, pluggy,
@@ -680,7 +705,7 @@ code starts Day 3.
 
 **13. Create `hello.py`.**
 
-- [ ] Create the file with this content:
+- [x] Create the file with this content:
 
 ```python
 """
@@ -704,7 +729,7 @@ automatically. That's not a coincidence; it's why we picked FastAPI.
 
 **14. Create `test_hello.py`.**
 
-- [ ] Create the file with this content:
+- [x] Create the file with this content:
 
 ```python
 """
@@ -733,7 +758,7 @@ Seeing pytest isolate a single failure is the point of that exercise.
 
 **15. Run them.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 pytest
@@ -747,7 +772,7 @@ you'll be reading it hundreds of times.
 
 **16. Try the verbose form once,** so you know it exists.
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 pytest -v
@@ -762,13 +787,13 @@ when a suite gets big.
 
 **17. Create the folder structure and the workflow file.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 mkdir -p .github/workflows
 ```
 
-- [ ] Create `.github/workflows/ci.yml` with the content below. **Replace
+- [x] Create `.github/workflows/ci.yml` with the content below. **Replace
       `"3.13"` with the version you noted in step 9** if it differs:
 
 ```yaml
@@ -828,7 +853,7 @@ nothing. So we'll make it go red on purpose, then fix it.
 
 **18. Commit and push.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 git add .
@@ -844,9 +869,9 @@ now on plain `git push` is enough.
 
 **19. Watch it run.**
 
-- [ ] On your repo page, click the **Actions** tab. You'll see your commit with a
+- [x] On your repo page, click the **Actions** tab. You'll see your commit with a
       spinning yellow dot, then a green checkmark after ~30–60s.
-- [ ] Click into the run and expand each step. Read the log. You'll see the
+- [x] Click into the run and expand each step. Read the log. You'll see the
       runner check out your code, install Python, install pytest, and run the
       suite — the same commands you ran locally, on a machine that started with
       nothing.
@@ -855,13 +880,13 @@ now on plain `git push` is enough.
 
 **20. Now break it on purpose.**
 
-- [ ] Edit `test_hello.py` and change the first test's assertion to:
+- [x] Edit `test_hello.py` and change the first test's assertion to:
 
 ```python
     assert add(1, 1) == 3    # deliberately wrong
 ```
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 pytest
@@ -874,7 +899,7 @@ will save you hours over the next 16 days.
 
 **21. Push the broken test and watch CI go red.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 git add .
@@ -890,13 +915,13 @@ the pipeline detects failure. Green means something because you've seen red.
 
 **22. Fix it and confirm green returns.**
 
-- [ ] Restore the assertion:
+- [x] Restore the assertion:
 
 ```python
     assert add(1, 1) == 2    # restored
 ```
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 pytest
@@ -920,7 +945,7 @@ proves it.
 
 **23. Confirm the planning docs are committed.**
 
-- [ ] They were included by `git add .` in step 18 — verify with:
+- [x] They were included by `git add .` in step 18 — verify with:
 
 ```bash
 git log --stat
@@ -928,14 +953,14 @@ git log --stat
 
 **24. Update this checklist.**
 
-- [ ] Tick the boxes above as you complete them.
-- [ ] Add a *Progress log* section at the top noting anything that differed from
+- [x] Tick the boxes above as you complete them.
+- [x] Add a *Progress log* section at the top noting anything that differed from
       the plan. You'll want it — project 1's Day 1 log recorded the SSH and
       Python 3.13 deviations, and both mattered later.
 
 **25. Review what you learned.**
 
-- [ ] Skim the Day 1 section of `LEARNING_NOTES.md` and try the flashcards out
+- [x] Skim the Day 1 section of `LEARNING_NOTES.md` and try the flashcards out
       loud. If any answer doesn't come, re-read that part of the primer now
       rather than later — Day 2 assumes all of it.
 

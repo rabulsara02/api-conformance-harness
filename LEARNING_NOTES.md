@@ -232,13 +232,18 @@ A **proxy** is a program that sits in the middle of a network conversation. The
 client thinks it's talking to the server; really it's talking to the proxy, and
 the proxy forwards everything to the real server and passes responses back.
 
-```
-Without a proxy:   harness ──────────────────▶ API
-With a proxy:      harness ──▶ fault proxy ──▶ API
-                                    │
-                          (can delay, corrupt,
-                           replace, or drop
-                           anything passing through)
+```mermaid
+flowchart LR
+    subgraph WITHOUT["Without a proxy"]
+        direction LR
+        H1["harness"] --> A1["API"]
+    end
+
+    subgraph WITH["With a proxy"]
+        direction LR
+        H2["harness"] --> PX["<b>fault proxy</b><br/>delay · corrupt<br/>replace · drop"]
+        PX --> A2["API"]
+    end
 ```
 
 Because everything flows through it, a proxy can *misbehave on purpose*. This is
@@ -490,6 +495,121 @@ deliberately seeded flaky tests for exactly the same reason.
 
 ---
 
-*Next: Day 2 primer — containers, images, why "works on my machine" is a
-technical problem with a technical fix, and getting three services to talk over a
-private network.*
+---
+
+## Day 2 — Containers, images, Compose, and container networking
+
+Full primer in `docs/DAY_02_CHECKLIST.md`. Distilled version below.
+
+### Concepts introduced
+
+**What a container is.** A process running on a Linux kernel that's been lied to
+about what it can see — its own filesystem, network interfaces, and process list.
+From inside it looks like a machine; from outside it's one process. The
+consequence that matters: the Python version, packages, OS libraries, and your
+code all travel together as one unit.
+
+**Container vs VM.** A VM virtualizes *hardware* and carries a full guest OS with
+its own kernel — gigabytes, boots in tens of seconds. A container isolates a
+*process* and shares the host kernel — tens of megabytes, starts in milliseconds.
+(On macOS, Docker Desktop runs a hidden Linux VM to supply the kernel, so a Mac
+uses both.)
+
+**Image vs container.** An image is a read-only filesystem template sitting on
+disk; a container is a running instance of one. Image is to container as class is
+to object. `Dockerfile --build--> image --run--> container`.
+
+**Layer caching and instruction order.** Each Dockerfile instruction produces a
+cached filesystem layer, and changing one invalidates it *and every layer after
+it*. Hence copying `requirements.txt` and running `pip install` **before**
+`COPY . .`: editing source code then leaves the dependency layer intact and pip
+is skipped. Slow-changing things early, fast-changing things late. Getting this
+backwards turns a 2-second rebuild into a 2-minute one.
+
+**Build context and `.dockerignore`.** `docker build .` sends the whole directory
+to the daemon. `.dockerignore` excludes paths from it. Excluding `.venv` isn't
+just about size — a macOS venv inside a Linux container contains binaries that
+can't execute there. The container installs its own dependencies; the host venv
+is actively wrong, not merely redundant.
+
+**Compose and service-name DNS.** `docker-compose.yml` declares several services
+and starts them on one private network. Compose runs a DNS server so each service
+is reachable by its **name** — `http://api:8000` — with no IP addresses anywhere.
+
+**Networking gotcha 1: `localhost` is per-container.** Each container has its own
+network namespace, so `127.0.0.1` means *this container*. Reaching a sibling
+requires its service name. The mirror image: a server inside a container must
+bind `0.0.0.0`, not `127.0.0.1`, or siblings can't reach it. **This is the same
+bug as project 1, Day 3** (modem simulator bind address) — evidence it's a
+networking fundamental rather than a Docker quirk.
+
+**Networking gotcha 2: started ≠ ready.** `depends_on` orders container
+*startup*; it says nothing about whether the process inside has finished booting
+and is accepting connections. Relying on it alone yields intermittent
+"connection refused" — same code, same config, different outcome by timing.
+**That is a flaky test, appearing in our own infrastructure on day two, before
+any product code exists.** Correct fix is a readiness poll with a deadline, not a
+fixed `sleep`. The same retry-with-deadline pattern returns on Day 9 in the
+harness runner.
+
+**socat as a stand-in proxy.** `socat TCP-LISTEN:8080,fork,reuseaddr TCP:api:8000`
+listens on 8080 and shuttles bytes to `api:8000`, forking per connection. A proxy
+in one line of config, which proves the topology now and gets replaced by the
+hand-written async proxy on Day 11.
+
+**Why prove the three-hop path today.** If `harness → proxy → api` fails on Day
+11, it should be a bug in the new proxy code — not a Docker networking problem
+being discovered for the first time while also debugging async I/O. Rule out the
+plumbing while every piece is still trivial. Same principle as Day 1, and as
+verifying a lab setup before testing an unknown device.
+
+### Day 2 flashcards
+
+1. **Difference between a container and a VM?** — A VM virtualizes hardware and
+   runs its own kernel; a container isolates a process and shares the host
+   kernel. Containers are far smaller and start far faster; VMs isolate more
+   strongly.
+2. **Difference between an image and a container?** — Image is a read-only
+   template on disk; container is a running instance of it. Class vs object.
+3. **Why copy `requirements.txt` and install before copying the rest of the
+   code?** — Layer caching. Editing source invalidates only the layers after the
+   copy, so `pip install` is skipped on rebuild. Reversing the order reinstalls
+   everything on every build.
+4. **What does `.dockerignore` do, and why exclude `.venv`?** — Excludes paths
+   from the build context. A host venv is huge and, on macOS, contains binaries
+   that can't run in a Linux container. The image builds its own dependencies.
+5. **How does one container reach another in Compose?** — By service name, via
+   Compose's DNS. Never by IP, never by `localhost`.
+6. **Why must a containerized server bind `0.0.0.0` rather than `127.0.0.1`?** —
+   `127.0.0.1` accepts only connections originating inside that same container,
+   making it unreachable from siblings.
+7. **What does `depends_on` actually guarantee?** — Start ordering only. Not that
+   the process inside is ready to accept connections.
+8. **Why is `depends_on` a flakiness source, and what's the right fix?** — It
+   creates a race: sometimes the dependent service wins, sometimes it gets
+   connection refused. Fix is polling for readiness with a deadline, not a fixed
+   sleep, which only hides the race behind a guess.
+9. **What is a build context?** — The directory contents sent to the Docker
+   daemon for a build, filtered by `.dockerignore`. Its size is printed on the
+   first line of build output.
+
+### Day 2 design decisions to defend
+
+- **Used `socat` as the Day 2 proxy rather than writing one.** The goal was to
+  validate network topology, not to build a proxy. Writing real proxy code here
+  would have conflated "does the path work" with "is my code correct" — the two
+  things this phase exists to separate.
+- **Replaced project 1's `sleep 2` with a readiness poll.** `sleep` is a guess: too
+  short and it's flaky, too long and every run pays for it. Polling with a
+  deadline is correct on both axes and fails with a diagnosable message rather
+  than a bare connection error.
+- **Matched the base image (`python:3.13-slim`) to local Python 3.13.1 and to CI.**
+  Three environments, one version. A mismatch produces bugs that reproduce in
+  only one place.
+- **Did not wire Compose into CI yet.** Nothing worth orchestrating exists until
+  Day 16. Adding it now would slow every push for no signal.
+
+---
+
+*Next: Day 3 primer — HTTP servers, ASGI, FastAPI, Pydantic models, and how type
+hints become an OpenAPI specification.*

@@ -1,0 +1,9 @@
+# Keep the build context small: these are never copied into the image.
+.venv
+__pycache__/
+*.pyc
+.git
+.pytest_cache/
+results/
+reports/
+.DS_Store

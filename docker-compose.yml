@@ -1,0 +1,46 @@
+# docker-compose.yml — the three services this project needs.
+#
+# Day 2: all three are placeholders. The point is to prove the network topology
+#        harness -> proxy -> api works before any real code depends on it.
+#
+# Later: `api` becomes the FastAPI device registry (Days 3-6), `proxy` becomes
+#        the async fault-injection proxy (Day 11), and `harness` becomes the
+#        contract + flake harness (Days 7-15).
+#
+# Compose puts all services on one private network and runs a DNS server, so
+# each service is reachable from the others by its NAME (api, proxy, harness).
+# No IP addresses anywhere.
+
+services:
+  # The service under test. Today: Python's built-in file server, which is
+  # enough to answer an HTTP request. Note it binds 0.0.0.0 (all interfaces),
+  # NOT 127.0.0.1 -- binding to loopback would make it unreachable from sibling
+  # containers, which is the same trap as the modem simulator in project 1.
+  api:
+    image: python:3.13-slim
+    command: python -m http.server 8000 --bind 0.0.0.0
+    ports:
+      - "8000:8000"          # also expose to the host, for manual poking
+
+  # The fault-injection point. Today: socat, an off-the-shelf TCP forwarder,
+  # standing in for code we haven't written. It listens on 8080 and forwards
+  # every connection to api:8000.
+  #   TCP-LISTEN:8080  = accept connections on port 8080
+  #   fork             = handle each connection in its own child process
+  #   reuseaddr        = allow immediate rebinding after restart
+  proxy:
+    image: alpine/socat
+    command: TCP-LISTEN:8080,fork,reuseaddr TCP:api:8000
+    depends_on:
+      - api
+    ports:
+      - "8080:8080"
+
+  # The tests. Built from our own Dockerfile, so it has our Python + pytest.
+  # `depends_on` only guarantees the others have STARTED, not that they are
+  # READY -- check_path.py retries until ready or a deadline passes.
+  harness:
+    build: .
+    command: python check_path.py
+    depends_on:
+      - proxy
