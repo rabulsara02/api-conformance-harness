@@ -16,7 +16,27 @@ This is the first day of product code. Phase 0 is behind you.
 
 ## Progress log (updated as we go)
 
-**Status: Parts A–E complete (8 tests passing). Parts F–H remaining.**
+**Status: ✅ DAY 3 COMPLETE.** Parts A–H done and pushed.
+
+**Done-when gate met:** 8 tests passing; `/openapi.json` serves a `Device` schema
+with `required: [id, name, status]` and an enum-constrained `status`; the Compose
+stack reaches the real FastAPI service through the proxy.
+
+Commit: `7538a15  FastAPI device registry, first endpoints, generated OpenAPI spec`
+
+**The Day 2 retry loop earned its keep immediately.** First Compose run against
+the real service:
+
+```
+proxy-1    | socat[7] E TCP:api:8000: Connection refused
+harness-1  |   attempt 1 not ready yet (Remote end closed connection without response) - retrying
+harness-1  | Connected on attempt 2: HTTP 200
+```
+
+uvicorn took longer to bind than `python -m http.server` did, so the started-vs-
+ready race actually fired. A fixed `sleep` would have been either too short (flaky)
+or too long (wasteful on every run); polling with a deadline handled it and said
+so in the log. This is the concrete example to cite when asked about flakiness.
 
 **Versions installed:** `fastapi==0.141.1`, `uvicorn==0.52.1`, `httpx==0.28.1`.
 Transitive: pydantic 2.13.4, starlette 1.3.1, anyio 4.14.2. Generated spec is
@@ -371,7 +391,7 @@ plus integration tests over a real socket.
 
 **1. Activate the environment and verify (habit from Day 1).**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cd ~/Projects/software-testing
@@ -383,7 +403,7 @@ which python
 
 **2. Install FastAPI, uvicorn, and httpx.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 python -m pip install fastapi uvicorn httpx
@@ -404,7 +424,7 @@ toolkit. You don't pin them (Day 1's direct-dependencies-only convention).
 
 **3. Record the three direct dependencies.**
 
-- [ ] Edit `requirements.txt` by hand, substituting the versions that step 2
+- [x] Edit `requirements.txt` by hand, substituting the versions that step 2
       printed:
 
 ```
@@ -431,13 +451,13 @@ httpx==<version from step 2>
 
 **4. Create the package directory and its marker file.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 mkdir -p api
 ```
 
-- [ ] Create `api/__init__.py` with this content:
+- [x] Create `api/__init__.py` with this content:
 
 ```python
 """
@@ -451,7 +471,7 @@ turned on and off on demand.
 
 **5. Create `api/models.py` — the data shapes.**
 
-- [ ] Create the file:
+- [x] Create the file:
 
 ```python
 """
@@ -521,7 +541,7 @@ class Device(BaseModel):
 
 **6. Create `api/store.py` — the in-memory data.**
 
-- [ ] Create the file:
+- [x] Create the file:
 
 ```python
 """
@@ -588,7 +608,7 @@ reset()
 
 **7. Create `api/main.py` — the app and its routes.**
 
-- [ ] Create the file:
+- [x] Create the file:
 
 ```python
 """
@@ -678,7 +698,7 @@ def get_device(device_id: int) -> Device:
 
 **8. Start the server.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 uvicorn api.main:app --reload
@@ -693,7 +713,7 @@ never for production — it's slower and holds extra file handles.
 
 **9. Poke the endpoints.**
 
-- [ ] In the second tab:
+- [x] In the second tab:
 
 ```bash
 curl http://127.0.0.1:8000/health
@@ -722,13 +742,13 @@ That's the type hint doing enforcement, not documentation.
 
 **10. Open the interactive docs.**
 
-- [ ] Visit <http://127.0.0.1:8000/docs> in a browser.
+- [x] Visit <http://127.0.0.1:8000/docs> in a browser.
 
 You get a page listing every endpoint, with a "Try it out" button that issues
 real requests. Nobody wrote it — it's rendered from the spec, which was generated
 from your type hints.
 
-- [ ] Expand `GET /devices/{device_id}`, click **Try it out**, enter `2`, and
+- [x] Expand `GET /devices/{device_id}`, click **Try it out**, enter `2`, and
       execute.
 
 ---
@@ -739,7 +759,7 @@ This is the important step of the day. Slow down here.
 
 **11. Look at the generated specification.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 curl -s http://127.0.0.1:8000/openapi.json | python -m json.tool | head -60
@@ -747,7 +767,7 @@ curl -s http://127.0.0.1:8000/openapi.json | python -m json.tool | head -60
 
 *(`python -m json.tool` pretty-prints JSON — a handy one to remember.)*
 
-- [ ] Now look specifically at the `Device` schema:
+- [x] Now look specifically at the `Device` schema:
 
 ```bash
 curl -s http://127.0.0.1:8000/openapi.json | python -c "import json,sys; print(json.dumps(json.load(sys.stdin)['components']['schemas']['Device'], indent=2))"
@@ -756,7 +776,7 @@ curl -s http://127.0.0.1:8000/openapi.json | python -c "import json,sys; print(j
 ✅ *Worked when:* you see something with `"required": ["id", "name", "status"]`
 and typed properties.
 
-- [ ] And the enum:
+- [x] And the enum:
 
 ```bash
 curl -s http://127.0.0.1:8000/openapi.json | python -c "import json,sys; print(json.dumps(json.load(sys.stdin)['components']['schemas']['DeviceStatus'], indent=2))"
@@ -778,7 +798,7 @@ own promise.
 
 **12. Retire the Day 1 placeholder.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 git rm hello.py test_hello.py
@@ -790,7 +810,7 @@ depended on it. Deleting them is the plan working, not wasted effort. Using
 
 **13. Write `test_api.py`.**
 
-- [ ] Create the file in the repo root:
+- [x] Create the file in the repo root:
 
 ```python
 """
@@ -917,7 +937,7 @@ def test_openapi_spec_constrains_status_to_three_values():
 
 **14. Run the suite.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 pytest -v
@@ -934,7 +954,7 @@ thing.
 
 **15. Update `docker-compose.yml`.**
 
-- [ ] Change the `api` service to build from your Dockerfile and run uvicorn:
+- [x] Change the `api` service to build from your Dockerfile and run uvicorn:
 
 ```yaml
   # The service under test -- now the real FastAPI device registry.
@@ -953,7 +973,7 @@ thing.
 `check_path.py` currently fetches `/`, which the file server answered but FastAPI
 will 404.
 
-- [ ] In `check_path.py`, change the target:
+- [x] In `check_path.py`, change the target:
 
 ```python
 TARGET = "http://proxy:8080/health"
@@ -961,7 +981,7 @@ TARGET = "http://proxy:8080/health"
 
 **17. Run the whole stack.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 docker compose up --build
@@ -970,7 +990,7 @@ docker compose up --build
 ✅ *Worked when:* the harness prints `SUCCESS: harness -> proxy -> api path is
 working` — now against your real API, through the proxy.
 
-- [ ] Clean up:
+- [x] Clean up:
 
 ```bash
 docker compose down
@@ -986,7 +1006,7 @@ harness will use from Day 7, working with real product code in it.
 
 **18. Check what's staged.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 git status --short
@@ -998,7 +1018,7 @@ git status --short
 
 **19. Commit and push.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 git add .
@@ -1006,7 +1026,7 @@ git commit -m "Day 3: FastAPI device registry, first endpoints, generated OpenAP
 git push
 ```
 
-- [ ] Confirm the Actions tab goes green.
+- [x] Confirm the Actions tab goes green.
 
 *Watch this run in particular:* it's the first time CI installs `fastapi`,
 `uvicorn`, and `httpx` from `requirements.txt`. If you mistyped a version, this
@@ -1018,15 +1038,15 @@ is where it surfaces — the Day 1 hermeticity lesson, live again.
 
 **20. Update this checklist.**
 
-- [ ] Tick the boxes and record anything that differed in the progress log.
+- [x] Tick the boxes and record anything that differed in the progress log.
 
 **21. Review.**
 
-- [ ] Read the Day 3 section of `LEARNING_NOTES.md` and try the flashcards aloud.
+- [x] Read the Day 3 section of `LEARNING_NOTES.md` and try the flashcards aloud.
 
 **22. Look ahead.**
 
-- [ ] Skim `PROJECT_PLAN.md` Day 4: the remaining CRUD endpoints, proper status
+- [x] Skim `PROJECT_PLAN.md` Day 4: the remaining CRUD endpoints, proper status
       codes, and replacing FastAPI's default error shape with a structured error
       model you declare — so that error responses are contract-checkable too.
 

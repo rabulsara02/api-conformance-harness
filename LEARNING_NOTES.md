@@ -747,5 +747,153 @@ in-process unit tests plus socket-level integration tests.
 
 ---
 
-*Next: Day 4 primer — the rest of CRUD, HTTP semantics for create/update/delete,
-and giving errors a declared shape of their own.*
+---
+
+## Day 4 — CRUD semantics, idempotency, and the error contract
+
+Full primer in `docs/DAY_04_CHECKLIST.md`. Distilled below.
+
+### Concepts introduced
+
+**CRUD → HTTP.** Create/Read/Update/Delete map onto POST/GET/PUT+PATCH/DELETE.
+`/devices` is the **collection**, `/devices/{id}` is a **member**. You POST to
+the collection (server assigns the id) and PUT/DELETE against a member.
+
+**PUT vs PATCH.** PUT *replaces* the entire resource — every field required,
+omitting one blanks it. PATCH modifies part of it.
+
+**Safe vs idempotent.** *Safe* = changes nothing on the server. *Idempotent* =
+doing it N times equals doing it once. GET is both; PUT and DELETE are
+idempotent but not safe; POST is neither; PATCH depends on the operation.
+
+**Why idempotency is load-bearing here.** Idempotency is what makes **retry**
+safe. When a request times out you don't know whether it landed — you can safely
+retry GET/PUT/DELETE, but retrying POST may create two devices. The harness gets
+retry logic on Day 9, so this is a constraint on our own design, not trivia. A
+test tool that corrupts the system under test is a real failure mode. (Project 1
+had the same split: `AT+CSQ?` safe, `AT+CFUN=0` not.)
+
+**201 + `Location`.** A successful create returns 201 and a `Location` header
+naming the new resource, which is how the client learns the server-assigned id.
+
+**204 must have no body.** Emitting one is a protocol violation — hence returning
+a bare `Response(status_code=204)` rather than a value FastAPI would serialize
+into `null`.
+
+**409 vs 422.** 409 Conflict = well-formed but impossible given current state
+(duplicate name). 422 = the request itself was malformed. Syntactically fine but
+semantically impossible is a different failure from syntactically broken.
+
+**Path vs query vs body.** FastAPI infers from the signature: name in the route
+path → path parameter; simple type not in the path → query parameter; annotated
+with a Pydantic model → request body.
+
+**Separate input and output models.** `DeviceCreate` has no `id` because the
+server assigns it. The deeper reason isn't security, it's contract precision:
+"we ignore `id` if you send it" is a rule that exists only in the implementation,
+whereas a separate request schema puts the rule *in the specification*.
+**Anything true only in your head cannot be tested.**
+
+**The error-shape problem (today's main idea).** FastAPI's default error body is
+`{"detail": ...}` where `detail` is a *string* for HTTPException and a *list of
+objects* for validation errors. No single useful schema covers both — and a
+schema permitting almost anything is not a constraint, so it cannot be violated,
+so it is worthless to a test. Consequence: **every 4xx was invisible to contract
+testing**, and error behaviour is a large share of an API's real behaviour.
+
+**The fix.** One declared envelope, `{"error": {"code", "message"}}`, plus
+exception handlers that normalize everything into it. `code` is the stable,
+machine-readable part; `message` is for humans and must not be parsed.
+
+**Catch the framework's errors too.** The handler is registered against
+**Starlette's** `HTTPException` (the parent of FastAPI's), so it also catches the
+404 the router raises for an unknown path and the 405 for a wrong method — errors
+our code never raises. Without that, those two responses would disagree with
+every other error in the API. That inconsistency is precisely what the Day 8
+validator is built to find.
+
+**Declaring statuses in the spec.** FastAPI documents the success response but
+cannot know a handler might raise 404 — that's runtime behaviour. Hence
+`responses={404: {"model": ErrorResponse}}` per route. This is load-bearing: the
+validator's *first* check is "was this status declared at all?", so an
+undeclared-but-correct 404 would be reported as a violation and the suite would
+drown in false positives.
+
+**Route ordering.** FastAPI matches in registration order, so specific paths must
+be registered before parametrized ones. With `/devices/{device_id}` first, a
+request for `/devices/search` matches it, fails to parse `"search"` as `int`, and
+422s — the endpoint is unreachable. Guarded by an explicit regression test.
+
+**The 422 spec-drift trap (best material of the day).** FastAPI auto-declares 422
+with its own `HTTPValidationError` schema. Replacing the error body with
+`ErrorResponse` means **the spec now describes a shape the service no longer
+produces** — the app works, the tests pass, and the document lies. This is exactly
+the class of bug the whole project exists to detect, encountered by hand on Day 4
+before the tool that finds it automatically exists. Fixed by declaring
+`422: {"model": ErrorResponse}` explicitly.
+
+**Monotonic ids.** Ids are never reused after a delete. Reuse would let a client
+holding a stale id silently address a different device; monotonic ids turn that
+into an honest 404.
+
+### Day 4 flashcards
+
+1. **Difference between safe and idempotent?** — Safe changes nothing on the
+   server. Idempotent means repeating the request has the same effect as doing it
+   once. GET is both, PUT and DELETE are idempotent but not safe, POST is
+   neither.
+2. **Why does idempotency matter to a test harness?** — It determines what can be
+   retried after a timeout. Retrying a POST can create duplicates, so a harness
+   that retries blindly corrupts the system under test.
+3. **PUT vs PATCH?** — PUT replaces the whole resource (all fields required);
+   PATCH modifies part of it.
+4. **Why 201 and a `Location` header instead of 200?** — A new resource was
+   created; `Location` tells the client its URL, including the server-assigned
+   id.
+5. **Why must a 204 have no body?** — 204 means "success, and deliberately no
+   content." A body is a protocol violation — most commonly a serialized `null`.
+6. **409 vs 422?** — 409: well-formed but conflicts with current state. 422: the
+   request itself is invalid.
+7. **Why a separate `DeviceCreate` model instead of reusing `Device`?** — The
+   server assigns ids. A separate request schema puts that rule in the spec
+   rather than only in the implementation, so it becomes testable.
+8. **What was wrong with the default error body?** — `detail` was sometimes a
+   string, sometimes a list of objects. No single schema describes it, so no
+   error response could be contract-tested.
+9. **Why register the handler against Starlette's HTTPException?** — FastAPI's is
+   a subclass. Registering against the parent also catches router-generated
+   errors (unknown path 404, wrong method 405), so every error in the API shares
+   one shape.
+10. **Why declare 404 in `responses=` when FastAPI already works without it?** —
+    The validator's first check is whether a status code was declared. An
+    undeclared 404 would be flagged as a violation despite being correct.
+11. **What is route shadowing and how do you avoid it?** — A parametrized route
+    registered first swallows requests meant for a more specific one. Register
+    specific paths before parametrized ones.
+12. **Describe a bug you found in your own project.** — Replacing the error body
+    left the spec still declaring FastAPI's `HTTPValidationError` for 422. The
+    service and its published contract disagreed while every test passed —
+    textbook spec drift, and the exact thing the harness is designed to catch.
+
+### Day 4 design decisions to defend
+
+- **One declared error envelope rather than FastAPI's default.** Without it,
+  error responses have no schema and the majority of the API's behaviour is
+  outside the contract entirely.
+- **`code` as the machine-readable field, `message` for humans.** Clients branch
+  on `code`; messages can be reworded without breaking anyone.
+- **Handlers registered on Starlette's `HTTPException`.** Consistency across
+  errors the framework raises as well as ours.
+- **Every possible status declared per route.** Completeness of the contract is a
+  prerequisite for the validator producing signal instead of noise.
+- **Explicit regression test for route ordering.** The bug is invisible in code
+  review and obvious in a test.
+- **Monotonic, non-reused ids.** Stale references fail honestly instead of
+  silently addressing the wrong resource.
+- **Store returns `bool`/`None`; only the route layer speaks HTTP.** Keeping that
+  boundary clean is what makes Day 6's seeded bug modes a single-file change.
+
+---
+
+*Next: Day 5 primer — state machines revisited, pagination, and pinning the spec
+so the contract stops being a tautology.*

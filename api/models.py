@@ -61,3 +61,86 @@ class Device(BaseModel):
         ...,
         description="Current operational state of the device.",
     )
+
+
+class DeviceCreate(BaseModel):
+    """
+    The body a client sends to CREATE a device.
+
+    Deliberately has no `id`: identifiers are assigned by the server. Modelling
+    this as a separate class rather than reusing `Device` and ignoring the id is
+    a contract decision, not a style one. "We ignore id if you send it" is a rule
+    that exists only in the implementation; a separate request schema puts the
+    rule *in the specification*, where a client can read it and a contract test
+    can enforce it.
+
+    `status` has a default, so it is optional in the request. That default also
+    appears in the spec, so clients know what they get if they omit it.
+    """
+
+    name: str = Field(
+        ...,
+        min_length=1,
+        max_length=64,
+        description="Human-readable label for the device. Must be unique.",
+        examples=["edge-router-03"],
+    )
+    status: DeviceStatus = Field(
+        default=DeviceStatus.OFFLINE,
+        description="Initial state. Defaults to 'offline' if omitted.",
+    )
+
+
+class DeviceUpdate(BaseModel):
+    """
+    The body a client sends to REPLACE a device (PUT).
+
+    Every field is required, because PUT means "make the resource look exactly
+    like this" -- omitting a field is a request to blank it, not to leave it
+    alone. Partial updates are what PATCH is for (Day 5).
+    """
+
+    name: str = Field(
+        ...,
+        min_length=1,
+        max_length=64,
+        description="Human-readable label for the device.",
+    )
+    status: DeviceStatus = Field(
+        ...,
+        description="Operational state to set.",
+    )
+
+
+class ErrorDetail(BaseModel):
+    """The inner object of an error response."""
+
+    code: str = Field(
+        ...,
+        description="Stable, machine-readable error identifier.",
+        examples=["not_found"],
+    )
+    message: str = Field(
+        ...,
+        description="Human-readable explanation. May change; do not parse it.",
+        examples=["No device with id 999"],
+    )
+
+
+class ErrorResponse(BaseModel):
+    """
+    The ONE shape every error response from this API takes.
+
+    FastAPI's default error body puts a `detail` key at the top level whose value
+    is sometimes a string and sometimes a list of objects. No single useful
+    schema describes that, which means error responses cannot be contract-tested
+    -- and for most APIs, error behaviour is a large share of the behaviour that
+    matters.
+
+    Wrapping the payload in a named `error` object (rather than putting `code`
+    and `message` at the top level) leaves room to add fields later -- a
+    `request_id`, a list of field-level problems -- without colliding with any
+    successful response shape.
+    """
+
+    error: ErrorDetail
