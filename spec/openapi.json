@@ -1,0 +1,636 @@
+{
+  "components": {
+    "schemas": {
+      "Device": {
+        "description": "One device in the registry.\n\n`Field(...)` -- the literal Ellipsis as the first argument -- marks a field\nas REQUIRED with no default. That requirement shows up in the spec's\n`required` list, which is exactly the kind of promise the harness checks\n(and which the `missing_field` bug mode will deliberately break on Day 6).",
+        "properties": {
+          "id": {
+            "description": "Unique identifier for the device, assigned by the server.",
+            "examples": [
+              1
+            ],
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "description": "Human-readable label for the device.",
+            "examples": [
+              "edge-router-01"
+            ],
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DeviceStatus",
+            "description": "Current operational state of the device."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status"
+        ],
+        "title": "Device",
+        "type": "object"
+      },
+      "DeviceCreate": {
+        "description": "The body a client sends to CREATE a device.\n\nDeliberately has no `id`: identifiers are assigned by the server. Modelling\nthis as a separate class rather than reusing `Device` and ignoring the id is\na contract decision, not a style one. \"We ignore id if you send it\" is a rule\nthat exists only in the implementation; a separate request schema puts the\nrule *in the specification*, where a client can read it and a contract test\ncan enforce it.\n\n`status` has a default, so it is optional in the request. That default also\nappears in the spec, so clients know what they get if they omit it.",
+        "properties": {
+          "name": {
+            "description": "Human-readable label for the device. Must be unique.",
+            "examples": [
+              "edge-router-03"
+            ],
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DeviceStatus",
+            "default": "offline",
+            "description": "Initial state. Defaults to 'offline' if omitted."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "DeviceCreate",
+        "type": "object"
+      },
+      "DevicePage": {
+        "description": "One page of devices.\n\nA bare JSON array cannot carry `total`, so a client has no way to know\nwhether more pages exist. Wrapping the list in an envelope solves that.\n\n`limit` and `offset` are echoed back deliberately: the server may clamp what\nwas requested, and the response should state what actually happened rather\nthan leaving the client to assume its request was honoured verbatim.",
+        "properties": {
+          "items": {
+            "description": "The devices on this page.",
+            "items": {
+              "$ref": "#/components/schemas/Device"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "description": "Maximum items per page, as applied.",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Number of items skipped, as applied.",
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Total devices matching the query, ignoring pagination.",
+            "examples": [
+              3
+            ],
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "DevicePage",
+        "type": "object"
+      },
+      "DeviceStatus": {
+        "description": "The only values a device's `status` field may take.\n\nInheriting from `str` as well as `Enum` makes members behave like plain\nstrings: they compare equal to \"online\" and serialize to JSON as \"online\"\nrather than as something enum-shaped.\n\nWhy an enum instead of a plain string field: FastAPI turns this into an\n`enum` constraint in the OpenAPI spec, so the Day 8 contract validator can\nassert that a returned status is one of exactly these three. A free-form\nstring would be unfalsifiable -- no response could ever violate it.",
+        "enum": [
+          "online",
+          "offline",
+          "degraded"
+        ],
+        "title": "DeviceStatus",
+        "type": "string"
+      },
+      "DeviceUpdate": {
+        "description": "The body a client sends to REPLACE a device (PUT).\n\nEvery field is required, because PUT means \"make the resource look exactly\nlike this\" -- omitting a field is a request to blank it, not to leave it\nalone. Partial updates are what PATCH is for (Day 5).",
+        "properties": {
+          "name": {
+            "description": "Human-readable label for the device.",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DeviceStatus",
+            "description": "Operational state to set."
+          }
+        },
+        "required": [
+          "name",
+          "status"
+        ],
+        "title": "DeviceUpdate",
+        "type": "object"
+      },
+      "ErrorDetail": {
+        "description": "The inner object of an error response.",
+        "properties": {
+          "code": {
+            "description": "Stable, machine-readable error identifier.",
+            "examples": [
+              "not_found"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "description": "Human-readable explanation. May change; do not parse it.",
+            "examples": [
+              "No device with id 999"
+            ],
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorDetail",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "description": "The ONE shape every error response from this API takes.\n\nFastAPI's default error body puts a `detail` key at the top level whose value\nis sometimes a string and sometimes a list of objects. No single useful\nschema describes that, which means error responses cannot be contract-tested\n-- and for most APIs, error behaviour is a large share of the behaviour that\nmatters.\n\nWrapping the payload in a named `error` object (rather than putting `code`\nand `message` at the top level) leaves room to add fields later -- a\n`request_id`, a list of field-level problems -- without colliding with any\nsuccessful response shape.",
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorDetail"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "ErrorResponse",
+        "type": "object"
+      },
+      "StatusUpdate": {
+        "description": "The body for PATCH /devices/{id}/status.\n\nA single field, because PATCH modifies part of a resource rather than\nreplacing it. A dedicated model rather than reusing DeviceUpdate makes the\nspec say precisely what this endpoint accepts -- sending a `name` here is a\ndeclared violation, not an undocumented no-op.",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/DeviceStatus",
+            "description": "The state to transition the device into."
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "StatusUpdate",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "A small REST API used as the system under test for a contract-conformance and flaky-test-detection harness. The domain is arbitrary -- the domain does not matter, the contract does.",
+    "title": "Device Registry",
+    "version": "0.3.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/devices": {
+      "get": {
+        "description": "Return one page of devices, plus the total number available.\n\nBREAKING CHANGE (v0.3.0): this used to return a bare JSON array. It now\nreturns an envelope, because an array cannot carry `total` and a client\ntherefore has no way to know whether more pages exist. Any client doing\n`for device in response` breaks. In a real system that needs a deprecation\nplan; here it is a deliberate demonstration of the exact class of change\ncontract testing exists to catch -- watch the drift check flag it.\n\n`ge=1, le=100` and `ge=0` are not merely validation: they become declared\nconstraints in the spec, which means the contract can be checked against them\nand the Day 10 fuzzer has real boundaries to probe.",
+        "operationId": "list_devices_devices_get",
+        "parameters": [
+          {
+            "description": "Maximum number of devices to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Maximum number of devices to return.",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of devices to skip before starting the page.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Number of devices to skip before starting the page.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevicePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed validation."
+          }
+        },
+        "summary": "List Devices",
+        "tags": [
+          "devices"
+        ]
+      },
+      "post": {
+        "description": "Create a device. The server assigns the id.\n\nReturns 201 (not 200) because a new resource came into existence, plus a\n`Location` header pointing at it -- that is how the client learns the\nassigned id without guessing.\n\nPOST is neither safe nor idempotent: calling it twice creates two devices.\nThat is why the harness must never blindly retry it (Day 9).",
+        "operationId": "create_device_devices_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Device"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A device with that name exists."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed validation."
+          }
+        },
+        "summary": "Create Device",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/devices/search": {
+      "get": {
+        "description": "Search devices by name substring and/or status.\n\nBoth parameters are QUERY parameters, not path parameters: FastAPI infers\nthat because their names do not appear in the route path and their types are\nsimple. Both default to None, making them optional; passing neither returns\nevery device.\n\nExample: /devices/search?name_contains=router&status=online",
+        "operationId": "search_devices_devices_search_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "name_contains",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name Contains"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/DeviceStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Device"
+                  },
+                  "title": "Response Search Devices Devices Search Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed validation."
+          }
+        },
+        "summary": "Search Devices",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/devices/{device_id}": {
+      "delete": {
+        "description": "Delete a device.\n\nReturns 204 No Content on success. A 204 response MUST NOT carry a body --\nthat is why this returns a bare Response object rather than a value FastAPI\nwould serialize into JSON. Returning None here would risk emitting the four\nbytes \"null\", which is a protocol violation and precisely the sort of thing\na contract test should catch.\n\nDELETE is idempotent in effect: once the device is gone, deleting again\nchanges nothing. We still answer 404 the second time, because the client\nasked us to delete something that does not exist and deserves to know.",
+        "operationId": "delete_device_devices__device_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No device with that id."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed validation."
+          }
+        },
+        "summary": "Delete Device",
+        "tags": [
+          "devices"
+        ]
+      },
+      "get": {
+        "description": "Return one device by id.\n\n`device_id: int` is doing real work, not documentation: FastAPI converts the\nURL text \"1\" into the integer 1, and rejects /devices/banana with a 422\nbefore this function is ever called. Free validation, straight from the type\nhint.\n\nRaising HTTPException rather than returning an error value means the error\npath cannot be silently ignored, and FastAPI turns it into a proper HTTP\nresponse.",
+        "operationId": "get_device_devices__device_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Device"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No device with that id."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed validation."
+          }
+        },
+        "summary": "Get Device",
+        "tags": [
+          "devices"
+        ]
+      },
+      "put": {
+        "description": "Replace a device wholesale.\n\nPUT means \"make this resource look exactly like the body I sent\" -- every\nfield is required, and omitting one is a request to blank it, not to leave\nit alone. Partial modification is PATCH's job (Day 5).\n\nPUT is idempotent: sending the same body twice leaves the same final state,\nwhich is what makes it safe for the harness to retry after a timeout.",
+        "operationId": "replace_device_devices__device_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Device"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No device with that id."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed validation."
+          }
+        },
+        "summary": "Replace Device",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/devices/{device_id}/status": {
+      "patch": {
+        "description": "Move a device into a new state, if the transition is legal.\n\nPATCH rather than PUT because this modifies one field rather than replacing\nthe resource.\n\nThree distinct outcomes, and keeping them distinct is the point:\n  * device missing            -> 404 (nothing to transition)\n  * transition not permitted  -> 409 (well-formed, impossible right now)\n  * status not a known value  -> 422 (handled by the enum, before we run)\n\nCollapsing 404 and 409 into one code would make the API cheaper to write and\nstrictly worse to test against: a client -- or a harness -- could no longer\ntell \"no such device\" from \"that move isn't allowed\".",
+        "operationId": "update_device_status_devices__device_id__status_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatusUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Device"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No device with that id."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A device with that name exists."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed validation."
+          }
+        },
+        "summary": "Update Device Status",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Liveness probe: is the process up and serving?\n\nKept trivial on purpose. Compose and CI use it to answer \"is this thing\nready yet\" (the started-vs-ready distinction from Day 2), so it must not\ndepend on anything that could itself be broken.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "meta"
+        ]
+      }
+    }
+  }
+}

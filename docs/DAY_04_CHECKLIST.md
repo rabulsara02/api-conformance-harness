@@ -14,7 +14,44 @@ responses are contract-checkable instead of being a shapeless blob.
 
 ## Progress log (updated as we go)
 
-**Status: not started.**
+**Status: ✅ DAY 4 COMPLETE.** Parts A–I done, pushed, CI green.
+
+**Done-when gate met:** 34 tests passing; every error in the API shares the one
+declared `ErrorResponse` shape; the spec's status-code table matches what the
+endpoints actually do; `422` resolves to `ErrorResponse`, not FastAPI's
+`HTTPValidationError`.
+
+Status-code table as built:
+
+```
+GET     /devices                 -> 200
+POST    /devices                 -> 201, 409, 422
+GET     /devices/search          -> 200, 422
+DELETE  /devices/{device_id}     -> 204, 404, 422
+GET     /devices/{device_id}     -> 200, 404, 422
+PUT     /devices/{device_id}     -> 200, 404, 422
+GET     /health                  -> 200
+```
+
+**Observation worth keeping — two different "not found"s.** While poking by hand:
+
+| Request | Status | Where it came from |
+|---|---|---|
+| `/devices/no-such-path` | 422 `validation_error` | **Matched** `/devices/{device_id}`, then failed int parsing |
+| `/no-such-path` | 404 `not_found` | Matched **no route**; raised by Starlette's router |
+
+The second is the one that proves the handler registration is right: our code
+never raises it, and it still comes back in the declared envelope. Registering
+against FastAPI's `HTTPException` instead of Starlette's parent class would have
+left that single response in the old `{"detail": ...}` shape — one endpoint
+silently disagreeing with every other.
+
+**Observation — in-memory state persists across manual curls.** After renaming
+device 1, deleting device 2, and creating 4 and 5 by hand, later searches
+reflected all of it, because uvicorn holds the store for the life of the process.
+Harmless when poking manually, and precisely why the suite resets the store
+before every test: without that, search assertions would depend on what had been
+curl'd earlier in the day. Concrete instance of test-order dependence.
 
 ---
 
@@ -285,7 +322,7 @@ standard interview question, and this is a better answer than a crash.
 
 **1. Add the new models to `api/models.py`.**
 
-- [ ] Append this to the end of the file (keep `DeviceStatus` and `Device` as
+- [x] Append this to the end of the file (keep `DeviceStatus` and `Device` as
       they are):
 
 ```python
@@ -378,7 +415,7 @@ class ErrorResponse(BaseModel):
 
 **2. Add the write operations to `api/store.py`.**
 
-- [ ] Replace the whole file with this version (the Day 3 functions are
+- [x] Replace the whole file with this version (the Day 3 functions are
       unchanged; the id counter and four new functions are added):
 
 ```python
@@ -545,7 +582,7 @@ reset()
 
 **3. Create `api/errors.py`.**
 
-- [ ] Create the file:
+- [x] Create the file:
 
 ```python
 """
@@ -658,7 +695,7 @@ def register_error_handlers(app: FastAPI) -> None:
 
 **4. Replace `api/main.py`.**
 
-- [ ] Replace the whole file:
+- [x] Replace the whole file:
 
 ```python
 """
@@ -898,7 +935,7 @@ def delete_device(device_id: int) -> Response:
 
 **5. Start the server.**
 
-- [ ] In one terminal:
+- [x] In one terminal:
 
 ```bash
 uvicorn api.main:app --reload
@@ -906,7 +943,7 @@ uvicorn api.main:app --reload
 
 **6. Exercise the write endpoints.**
 
-- [ ] In a second terminal:
+- [x] In a second terminal:
 
 ```bash
 curl -i -X POST http://127.0.0.1:8000/devices \
@@ -917,7 +954,7 @@ curl -i -X POST http://127.0.0.1:8000/devices \
 ✅ *Worked when:* `HTTP/1.1 201 Created`, a `location: /devices/4` header, and
 the created device in the body.
 
-- [ ] Create the same name again:
+- [x] Create the same name again:
 
 ```bash
 curl -i -X POST http://127.0.0.1:8000/devices \
@@ -931,7 +968,7 @@ curl -i -X POST http://127.0.0.1:8000/devices \
 **Look at that body.** It's the new declared shape — and this is the first
 response in the project whose *error* has a schema.
 
-- [ ] Omit the optional status to see the default apply:
+- [x] Omit the optional status to see the default apply:
 
 ```bash
 curl -s -X POST http://127.0.0.1:8000/devices \
@@ -941,7 +978,7 @@ curl -s -X POST http://127.0.0.1:8000/devices \
 
 ✅ *Worked when:* the returned device has `"status":"offline"`.
 
-- [ ] Replace, then delete:
+- [x] Replace, then delete:
 
 ```bash
 curl -i -X PUT http://127.0.0.1:8000/devices/1 \
@@ -957,7 +994,7 @@ returns **204 with no body**; the second returns 404 in the error shape.
 
 **7. Confirm the error shape is now universal.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 curl -s http://127.0.0.1:8000/devices/999
@@ -976,7 +1013,7 @@ structurally different bodies. One shape now, everywhere.
 
 **8. Try the search endpoint.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 curl -s "http://127.0.0.1:8000/devices/search?name_contains=router"
@@ -999,7 +1036,7 @@ them back — same instinct as breaking CI on Day 1.
 
 **9. Confirm the error model reached the spec.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 curl -s http://127.0.0.1:8000/openapi.json | python -c "import json,sys; s=json.load(sys.stdin); print(json.dumps(s['components']['schemas']['ErrorResponse'], indent=2)); print(json.dumps(s['components']['schemas']['ErrorDetail'], indent=2))"
@@ -1010,7 +1047,7 @@ curl -s http://127.0.0.1:8000/openapi.json | python -c "import json,sys; s=json.
 
 **10. Confirm every status code is declared.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 curl -s http://127.0.0.1:8000/openapi.json | python -c "
@@ -1042,7 +1079,7 @@ contract becoming genuinely testable.
 
 **11. Verify the 422 trap is actually fixed.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 curl -s http://127.0.0.1:8000/openapi.json | python -c "
@@ -1066,7 +1103,7 @@ That is the exact bug from primer §9. Fix it and re-check.
 
 **12. Add the new tests to `test_api.py`.**
 
-- [ ] Append this to the end of the file (keep the Day 3 tests):
+- [x] Append this to the end of the file (keep the Day 3 tests):
 
 ```python
 # ---------------------------------------------------------------------------
@@ -1312,7 +1349,7 @@ def test_spec_422_uses_our_error_model_not_fastapis_default():
 
 **13. Run the suite.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 pytest -v
@@ -1327,7 +1364,7 @@ parametrized error-shape test counts as 4).
 
 **14. Confirm the containerized stack still works.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 docker compose up --build
@@ -1338,7 +1375,7 @@ docker compose down
 
 **15. Commit and push.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 git status --short
@@ -1347,7 +1384,7 @@ git commit -m "Day 4: CRUD endpoints, search, and a declared error model"
 git push
 ```
 
-- [ ] Confirm CI goes green.
+- [x] Confirm CI goes green.
 
 ---
 
@@ -1355,17 +1392,17 @@ git push
 
 **16. Update this checklist.**
 
-- [ ] Tick the boxes and record anything that differed in the progress log.
+- [x] Tick the boxes and record anything that differed in the progress log.
 
 **17. Review.**
 
-- [ ] Read the Day 4 section of `LEARNING_NOTES.md` and try the flashcards aloud.
+- [x] Read the Day 4 section of `LEARNING_NOTES.md` and try the flashcards aloud.
       Pay particular attention to safety/idempotency — it's the most likely of
       today's topics to come up in an interview.
 
 **18. Look ahead.**
 
-- [ ] Skim `PROJECT_PLAN.md` Day 5. Tomorrow: the status state machine (the echo
+- [x] Skim `PROJECT_PLAN.md` Day 5. Tomorrow: the status state machine (the echo
       of project 1's registration FSM), pagination, and **pinning the spec** —
       the step that stops the contract from being a tautology.
 

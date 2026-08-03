@@ -14,21 +14,23 @@ Run locally with:
 ROUTE ORDER MATTERS in this file -- see the note above /devices/search.
 """
 
-from fastapi import FastAPI, HTTPException, Response, status
+from fastapi import FastAPI, HTTPException, Query,Response, status
 
 from api import store
 from api.errors import register_error_handlers
 from api.models import (
     Device,
     DeviceCreate,
+    DevicePage,
     DeviceStatus,
     DeviceUpdate,
     ErrorResponse,
+    StatusUpdate,
 )
 
 app = FastAPI(
     title="Device Registry",
-    version="0.2.0",
+    version="0.3.0",
     description=(
         "A small REST API used as the system under test for a contract-"
         "conformance and flaky-test-detection harness. The domain is "
@@ -71,17 +73,41 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/devices", response_model=list[Device], tags=["devices"])
-def list_devices() -> list[Device]:
+@app.get(
+    "/devices",
+    response_model=DevicePage,
+    responses={**_VALIDATION},
+    tags=["devices"],
+)
+def list_devices(
+    limit: int = Query(
+        default=50,
+        ge=1,
+        le=100,
+        description="Maximum number of devices to return.",
+    ),
+    offset: int = Query(
+        default=0,
+        ge=0,
+        description="Number of devices to skip before starting the page.",
+    ),
+) -> DevicePage:
     """
-    Return every device in the registry.
+    Return one page of devices, plus the total number available.
 
-    `response_model=list[Device]` tells FastAPI two things: serialize the return
-    value as a list of Devices, and declare that shape in the OpenAPI spec. The
-    declaration is the half that matters here -- it is what the harness checks
-    responses against.
+    BREAKING CHANGE (v0.3.0): this used to return a bare JSON array. It now
+    returns an envelope, because an array cannot carry `total` and a client
+    therefore has no way to know whether more pages exist. Any client doing
+    `for device in response` breaks. In a real system that needs a deprecation
+    plan; here it is a deliberate demonstration of the exact class of change
+    contract testing exists to catch -- watch the drift check flag it.
+
+    `ge=1, le=100` and `ge=0` are not merely validation: they become declared
+    constraints in the spec, which means the contract can be checked against them
+    and the Day 10 fuzzer has real boundaries to probe.
     """
-    return store.list_devices()
+    items, total = store.page_devices(limit=limit, offset=offset)
+    return DevicePage(items=items, total=total, limit=limit, offset=offset)
 
 
 @app.post(
@@ -227,3 +253,46 @@ def delete_device(device_id: int) -> Response:
             detail=f"No device with id {device_id}",
         )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.patch(
+    "/devices/{device_id}/status",
+    response_model=Device,
+    responses={**_NOT_FOUND, **_CONFLICT, **_VALIDATION},
+    tags=["devices"],
+)
+def update_device_status(device_id: int, payload: StatusUpdate) -> Device:
+    """
+    Move a device into a new state, if the transition is legal.
+
+    PATCH rather than PUT because this modifies one field rather than replacing
+    the resource.
+
+    Three distinct outcomes, and keeping them distinct is the point:
+      * device missing            -> 404 (nothing to transition)
+      * transition not permitted  -> 409 (well-formed, impossible right now)
+      * status not a known value  -> 422 (handled by the enum, before we run)
+
+    Collapsing 404 and 409 into one code would make the API cheaper to write and
+    strictly worse to test against: a client -- or a harness -- could no longer
+    tell "no such device" from "that move isn't allowed".
+    """
+    device = store.get_device(device_id)
+    if device is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No device with id {device_id}",
+        )
+
+    if not store.is_legal_transition(device.status, payload.status):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Illegal transition: {device.status.value} -> "
+                f"{payload.status.value}"
+            ),
+        )
+
+    updated = store.set_status(device_id, payload.status)
+    assert updated is not None  # existence was checked above
+    return updated

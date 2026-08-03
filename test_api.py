@@ -42,11 +42,13 @@ def test_health_returns_ok():
 
 
 def test_list_devices_returns_all_seeded_devices():
-    """All three seeded devices come back."""
+    """All three seeded devices come back, now inside a page envelope."""
     response = client.get("/devices")
     assert response.status_code == 200
+
     body = response.json()
-    assert len(body) == 3
+    assert body["total"] == 3
+    assert len(body["items"]) == 3
 
 
 def test_list_devices_is_ordered_by_id():
@@ -57,7 +59,7 @@ def test_list_devices_is_ordered_by_id():
     test pass a hundred times and fail on the hundred-and-first.
     """
     body = client.get("/devices").json()
-    assert [device["id"] for device in body] == [1, 2, 3]
+    assert [device["id"] for device in body["items"]] == [1, 2, 3]
 
 
 def test_get_device_returns_the_right_device():
@@ -328,12 +330,13 @@ def test_spec_declares_every_status_each_endpoint_can_return():
     spec = client.get("/openapi.json").json()
 
     expected = {
-        ("/devices", "get"): {"200"},
+        ("/devices", "get"): {"200", "422"},
         ("/devices", "post"): {"201", "409", "422"},
         ("/devices/search", "get"): {"200", "422"},
         ("/devices/{device_id}", "get"): {"200", "404", "422"},
         ("/devices/{device_id}", "put"): {"200", "404", "422"},
         ("/devices/{device_id}", "delete"): {"204", "404", "422"},
+        ("/devices/{device_id}/status", "patch"): {"200", "404", "409", "422"},
         ("/health", "get"): {"200"},
     }
 
@@ -359,3 +362,127 @@ def test_spec_422_uses_our_error_model_not_fastapis_default():
         "content"
     ]["application/json"]["schema"]
     assert schema["$ref"].endswith("/ErrorResponse")
+
+
+# ---------------------------------------------------------------------------
+# Day 5 -- status state machine and pagination
+# ---------------------------------------------------------------------------
+
+
+def test_legal_transition_offline_to_online():
+    """Device 2 starts offline; coming up is permitted."""
+    response = client.patch("/devices/2/status", json={"status": "online"})
+    assert response.status_code == 200
+    assert response.json()["status"] == "online"
+
+
+def test_illegal_transition_offline_to_degraded_returns_409():
+    """
+    A device that was never up cannot be 'degraded'.
+
+    409, not 422: the request is perfectly well-formed, it is just impossible
+    given the current state. Keeping those two codes distinct is what lets a
+    client tell a bad request from a bad moment.
+    """
+    response = client.patch("/devices/2/status", json={"status": "degraded"})
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "conflict"
+
+
+def test_transition_becomes_legal_via_an_intermediate_state():
+    """offline -> degraded is illegal, but offline -> online -> degraded is fine."""
+    assert client.patch("/devices/2/status", json={"status": "online"}).status_code == 200
+    assert client.patch("/devices/2/status", json={"status": "degraded"}).status_code == 200
+
+
+def test_status_patch_is_idempotent():
+    """
+    Setting a device to the state it is already in is a legal no-op.
+
+    This is a deliberate design decision, not an accident. If no-ops were
+    rejected, the same PATCH sent twice would return 200 then 409, and the
+    harness could not safely retry it after a timeout (Day 9). Asserting it here
+    keeps the property from being lost in a later refactor.
+    """
+    first = client.patch("/devices/1/status", json={"status": "online"})
+    second = client.patch("/devices/1/status", json={"status": "online"})
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json() == second.json()
+
+
+def test_status_patch_on_missing_device_returns_404():
+    response = client.patch("/devices/999/status", json={"status": "online"})
+    assert response.status_code == 404
+
+
+def test_status_patch_rejects_unknown_status():
+    """The enum constraint applies to request bodies too."""
+    response = client.patch("/devices/1/status", json={"status": "banana"})
+    assert response.status_code == 422
+
+
+def test_status_patch_does_not_change_other_fields():
+    """PATCH modifies one field; everything else survives untouched."""
+    before = client.get("/devices/1").json()
+    after = client.patch("/devices/1/status", json={"status": "degraded"}).json()
+    assert after["id"] == before["id"]
+    assert after["name"] == before["name"]
+    assert after["status"] == "degraded"
+
+
+def test_pagination_returns_a_page_and_a_total():
+    body = client.get("/devices?limit=2&offset=0").json()
+    assert [d["id"] for d in body["items"]] == [1, 2]
+    assert body["total"] == 3
+    assert body["limit"] == 2
+    assert body["offset"] == 0
+
+
+def test_pagination_second_page():
+    body = client.get("/devices?limit=2&offset=2").json()
+    assert [d["id"] for d in body["items"]] == [3]
+    assert body["total"] == 3
+
+
+def test_pagination_beyond_the_end_returns_an_empty_page():
+    """
+    An out-of-range offset is an empty page, not an error.
+
+    `total` still reports the real count, so a client that overshot can work out
+    where it should have been. Least-surprising behaviour, and one fewer error
+    path to declare in the contract.
+    """
+    body = client.get("/devices?limit=2&offset=99").json()
+    assert body["items"] == []
+    assert body["total"] == 3
+
+
+def test_pagination_defaults_apply_when_omitted():
+    body = client.get("/devices").json()
+    assert body["limit"] == 50
+    assert body["offset"] == 0
+
+
+def test_pagination_rejects_out_of_range_limits():
+    """
+    `ge=1, le=100` are declared constraints, not just guards.
+
+    They appear in the spec, which means the contract can be checked against
+    them and the Day 10 fuzzer has real boundaries to probe.
+    """
+    assert client.get("/devices?limit=0").status_code == 422
+    assert client.get("/devices?limit=101").status_code == 422
+    assert client.get("/devices?offset=-1").status_code == 422
+
+
+def test_spec_declares_pagination_constraints():
+    """The bounds must survive into the contract, or they are untestable."""
+    spec = client.get("/openapi.json").json()
+    params = {
+        p["name"]: p["schema"]
+        for p in spec["paths"]["/devices"]["get"]["parameters"]
+    }
+    assert params["limit"]["minimum"] == 1
+    assert params["limit"]["maximum"] == 100
+    assert params["offset"]["minimum"] == 0

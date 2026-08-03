@@ -895,5 +895,139 @@ into an honest 404.
 
 ---
 
-*Next: Day 5 primer — state machines revisited, pagination, and pinning the spec
-so the contract stops being a tautology.*
+---
+
+## Day 5 — State machines, pagination, and pinning the contract
+
+Full primer in `docs/DAY_05_CHECKLIST.md`. Distilled below. **The spec-pinning
+section is the single most important idea in the project** — be fluent in it.
+
+### Concepts introduced
+
+**A status state machine, echoing project 1.** Legal transitions live in a table:
+`offline → online`, `online ⇄ degraded`, both → `offline`. `offline → degraded`
+is illegal — a device that was never up cannot be degraded. Illegal transition →
+**409** (well-formed, impossible now), not 422 (malformed).
+
+**Why a state machine rather than a plain setter.** A free-form setter has no
+wrong answers, and behaviour with no wrong answers cannot be tested. The
+transition table is a *constraint*, and constraints are what give a test
+something to catch. Same reasoning as enum-over-string on Day 3.
+
+**No-op transitions are legal, deliberately.** Setting a device to the state it's
+already in returns 200, not 409. If no-ops were rejected, the same PATCH sent
+twice would give 200 then 409 — **PATCH would not be idempotent**, and the
+harness could not safely retry it after a timeout (Day 9). A request that fails
+on retry *because it already succeeded* is miserable to diagnose. This is a
+design decision made for the benefit of the testing story, which is exactly the
+kind of decision worth citing in an interview.
+
+**Pagination needs an envelope.** A bare array cannot carry `total`, so a client
+can't tell whether more pages exist. Response becomes
+`{"items", "total", "limit", "offset"}`. Echoing `limit`/`offset` back is not
+redundant — the server may clamp the request, and the response should state what
+actually happened.
+
+**Breaking vs additive changes.** Additive: adding an optional response field, or
+an optional query parameter — old clients keep working. Breaking: turning an
+array into an object, removing or renaming a field, changing a type. Our
+pagination change is breaking (hence v0.3.0), and is a live demonstration of
+exactly the change class contract testing exists to catch.
+
+**Declared bounds are testable bounds.** `limit` `ge=1, le=100` and `offset`
+`ge=0` land in the spec as `minimum`/`maximum`, so the contract can be checked
+against them and the Day 10 fuzzer has real boundaries to probe.
+
+**THE BIG ONE — why the spec must be pinned.** FastAPI generates
+`/openapi.json` *from the code*, so the live spec always agrees with the code by
+construction. A harness fetching that live spec and checking responses against it
+could never fail: **the service would be graded against a description of itself.**
+That's a tautology, not a test.
+
+Fix, in two parts: (1) export the generated document to a committed
+`spec/openapi.json`, which becomes *the contract* — a fixed artifact with a
+history, and the file the harness reads from Day 8; (2) a **drift check** test
+comparing the pinned file against what the app currently generates.
+
+**The nuance that makes it a good answer:** *pinning doesn't make the contract
+unchangeable, it makes changing it **visible**.* You can re-pin any time — but
+then the change shows up as a diff in a committed file, in a pull request, where
+a human is asked about it. The goal isn't to prevent change, it's to prevent
+*accidental* change. A contract you can amend silently and unilaterally isn't a
+contract.
+
+**Deterministic serialization.** The export uses `sort_keys=True`, fixed indent,
+trailing newline. Without that, dict ordering could differ between runs and the
+drift check would fail for no reason — **a flaky test inside the tool built to
+detect flaky tests.**
+
+**The drift check is a pytest test, not a bespoke CI step.** It therefore runs
+locally and in CI with no workflow changes, catching drift at the moment of
+introduction rather than at review time.
+
+**What the drift check can and cannot do.** It cannot tell you a contract change
+is *wrong* — only that one happened and wasn't deliberately re-pinned. That's the
+correct level of strictness: judging acceptability is a human's job, and the
+test's role is to guarantee a human is asked.
+
+**Validating the detector, again.** Deliberately changed the app version, watched
+the drift check fail, inspected `git diff spec/openapi.json`, re-pinned. Same
+discipline as breaking CI on Day 1: an unvalidated detector is indistinguishable
+from one silently comparing nothing.
+
+### Day 5 flashcards
+
+1. **Why model status as a state machine instead of a settable field?** — A
+   free-form setter has no wrong answers, so nothing about it can be tested. The
+   transition table creates constraints a test can catch.
+2. **Why 409 and not 422 for an illegal transition?** — The request is
+   well-formed; it's impossible given current state. 422 means the request itself
+   was invalid.
+3. **Are no-op transitions legal, and why?** — Yes. Rejecting them would make
+   PATCH non-idempotent, so the harness could not safely retry it after a
+   timeout.
+4. **Why does a paginated response need an envelope?** — A bare array can't carry
+   `total`, so the client can't know whether more pages exist.
+5. **Why echo `limit` and `offset` back?** — The server may clamp the request;
+   the response should report what actually happened rather than leaving the
+   client to assume.
+6. **Give an example of a breaking vs an additive API change.** — Breaking:
+   turning an array response into an object. Additive: adding an optional field
+   old clients can ignore.
+7. **Why can't you test a service against its own generated spec?** — The spec is
+   derived from the code, so it always agrees with it. The service would be
+   graded against a description of itself — a tautology.
+8. **What does pinning the spec actually achieve?** — It makes contract changes
+   visible as a reviewable diff, rather than silent. It prevents accidental
+   change, not change.
+9. **Why `sort_keys=True` in the export?** — Deterministic output. Otherwise key
+   ordering could vary between runs and the drift check would fail spuriously —
+   a flaky test inside a flaky-test detector.
+10. **What can the drift check NOT tell you?** — Whether a change is acceptable.
+    Only that one happened without being re-pinned. Judging it is a human's job.
+11. **Why is the drift check a test rather than a CI step?** — It then runs
+    everywhere pytest runs, locally and in CI, with no workflow-specific
+    configuration.
+
+### Day 5 design decisions to defend
+
+- **Transition table over scattered `if`s.** One readable place stating what is
+  permitted; trivially auditable and easy to seed bugs against on Day 6.
+- **No-op transitions legal, to preserve idempotency.** Chosen for retry safety
+  in the harness rather than by REST convention.
+- **404 and 409 kept distinct on PATCH.** Collapsing them would be cheaper to
+  write and strictly worse to test against — a client could no longer tell "no
+  such device" from "that move isn't allowed".
+- **Out-of-range offset returns an empty page, not an error.** Least-surprising
+  behaviour, and one fewer error path to declare in the contract.
+- **Spec pinned to a committed file; harness reads the file, never the live
+  endpoint.** Without this the entire contract-testing premise collapses.
+- **Drift check implemented as a test.** Runs everywhere, needs no CI plumbing,
+  and fails at the moment of introduction.
+- **Deterministic JSON serialization in the export.** Prevents the check itself
+  from becoming a source of flakiness.
+
+---
+
+*Next: Day 6 primer — seeded bug modes, ground truth for measuring a classifier,
+and freezing the service under test.*

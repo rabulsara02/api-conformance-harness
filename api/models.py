@@ -144,3 +144,41 @@ class ErrorResponse(BaseModel):
     """
 
     error: ErrorDetail
+
+
+class StatusUpdate(BaseModel):
+    """
+    The body for PATCH /devices/{id}/status.
+
+    A single field, because PATCH modifies part of a resource rather than
+    replacing it. A dedicated model rather than reusing DeviceUpdate makes the
+    spec say precisely what this endpoint accepts -- sending a `name` here is a
+    declared violation, not an undocumented no-op.
+    """
+
+    status: DeviceStatus = Field(
+        ...,
+        description="The state to transition the device into.",
+    )
+
+
+class DevicePage(BaseModel):
+    """
+    One page of devices.
+
+    A bare JSON array cannot carry `total`, so a client has no way to know
+    whether more pages exist. Wrapping the list in an envelope solves that.
+
+    `limit` and `offset` are echoed back deliberately: the server may clamp what
+    was requested, and the response should state what actually happened rather
+    than leaving the client to assume its request was honoured verbatim.
+    """
+
+    items: list[Device] = Field(..., description="The devices on this page.")
+    total: int = Field(
+        ...,
+        description="Total devices matching the query, ignoring pagination.",
+        examples=[3],
+    )
+    limit: int = Field(..., description="Maximum items per page, as applied.")
+    offset: int = Field(..., description="Number of items skipped, as applied.")

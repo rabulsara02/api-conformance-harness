@@ -151,5 +151,76 @@ def search_devices(
     return results
 
 
+# ---------------------------------------------------------------------------
+# Status state machine
+#
+# The direct analogue of the modem registration FSM in project 1. Not every
+# transition is legal: a device that has never been up cannot become "degraded"
+# without coming online first. Encoding that as a table rather than as scattered
+# `if` statements keeps the rule in one readable place and makes it obvious what
+# is and is not permitted.
+#
+# A free-form status setter would have no wrong answers, and behaviour with no
+# wrong answers cannot be tested. The constraint is what gives a test something
+# to catch.
+# ---------------------------------------------------------------------------
+_LEGAL_TRANSITIONS: dict[DeviceStatus, frozenset[DeviceStatus]] = {
+    DeviceStatus.OFFLINE: frozenset({DeviceStatus.ONLINE}),
+    DeviceStatus.ONLINE: frozenset({DeviceStatus.DEGRADED, DeviceStatus.OFFLINE}),
+    DeviceStatus.DEGRADED: frozenset({DeviceStatus.ONLINE, DeviceStatus.OFFLINE}),
+}
+
+
+def is_legal_transition(current: DeviceStatus, target: DeviceStatus) -> bool:
+    """
+    Can a device move from `current` to `target`?
+
+    A transition to the SAME state is always allowed, and that is a deliberate
+    decision rather than an oversight. If setting status to its current value
+    were rejected, then sending the same PATCH twice would return 200 and then
+    409 -- PATCH would not be idempotent, and the harness could not safely retry
+    it after a timeout (Day 9). A request that fails on retry *because it already
+    succeeded* is miserable to diagnose.
+
+    So: no-ops are legal, specifically to keep the operation retry-safe.
+    """
+    if current == target:
+        return True
+    return target in _LEGAL_TRANSITIONS[current]
+
+
+def set_status(device_id: int, target: DeviceStatus) -> Device | None:
+    """
+    Move a device into `target`. Returns None if the device does not exist.
+
+    Assumes the transition has already been checked with is_legal_transition().
+    The store deals in data; deciding that an illegal transition means "409" is
+    the route layer's job. Keeping that boundary is what will let Day 6 inject
+    faults in one place without touching business logic.
+    """
+    device = _DEVICES.get(device_id)
+    if device is None:
+        return None
+
+    updated = Device(id=device.id, name=device.name, status=target)
+    _DEVICES[device_id] = updated
+    return updated
+
+
+def page_devices(limit: int, offset: int) -> tuple[list[Device], int]:
+    """
+    Return (one page of devices, total count before paging).
+
+    The total is computed from the full set, not the page, because that is the
+    number a client needs in order to know whether more pages exist.
+
+    Slicing past the end of a list yields an empty list rather than raising, so
+    an out-of-range offset produces an empty page and an honest total -- which is
+    the least surprising behaviour and one less error path to declare.
+    """
+    all_devices = list_devices()
+    return all_devices[offset : offset + limit], len(all_devices)
+
+
 # Populate on import, so the app has data as soon as it starts.
 reset()
