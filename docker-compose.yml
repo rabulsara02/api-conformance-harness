@@ -12,15 +12,15 @@
 # No IP addresses anywhere.
 
 services:
-  # The service under test. Today: Python's built-in file server, which is
-  # enough to answer an HTTP request. Note it binds 0.0.0.0 (all interfaces),
-  # NOT 127.0.0.1 -- binding to loopback would make it unreachable from sibling
-  # containers, which is the same trap as the modem simulator in project 1.
+ # The service under test -- now the real FastAPI device registry.
+  # --host 0.0.0.0 is REQUIRED: binding to 127.0.0.1 would accept only
+  # connections originating inside this container, making it unreachable from
+  # the proxy and harness containers (Day 2, networking gotcha 1).
   api:
-    image: python:3.13-slim
-    command: python -m http.server 8000 --bind 0.0.0.0
+    build: .
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
     ports:
-      - "8000:8000"          # also expose to the host, for manual poking
+      - "8000:8000"
 
   # The fault-injection point. Today: socat, an off-the-shelf TCP forwarder,
   # standing in for code we haven't written. It listens on 8080 and forwards

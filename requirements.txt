@@ -1,3 +1,12 @@
-# Direct dependencies only. Transitive deps (iniconfig, packaging, pluggy,
+# Direct dependencies only. Transitive deps (pydantic, starlettte, iniconfig, packaging, pluggy,
 # Pygments) are resolved automatically by pip and deliberately not pinned here.
+
+# Testing
 pytest==9.1.1
+
+# Service under test
+fastapi==0.141.1
+uvicorn==0.52.1
+
+# HTTP client (used by fastapi.testclient today, by the harness from Day 7)
+httpx==0.28.1

@@ -611,5 +611,141 @@ verifying a lab setup before testing an unknown device.
 
 ---
 
-*Next: Day 3 primer — HTTP servers, ASGI, FastAPI, Pydantic models, and how type
-hints become an OpenAPI specification.*
+---
+
+## Day 3 — ASGI, FastAPI, Pydantic, and the generated contract
+
+Full primer in `docs/DAY_03_CHECKLIST.md`. Distilled below.
+
+### Concepts introduced
+
+**Server vs framework.** Two separate jobs. The **web server** (`uvicorn`) owns
+the socket: accepts TCP connections, parses raw bytes into HTTP requests, writes
+responses back. The **framework** (`FastAPI`) decides what to *do* with a parsed
+request. In project 1 you hand-wrote both halves for AT-over-TCP; here they're
+split, which is why `pip install fastapi` alone gives you nothing runnable.
+
+**ASGI.** *Asynchronous Server Gateway Interface* — the convention both sides
+follow, so any ASGI server can run any ASGI framework. Predecessor **WSGI** is
+the synchronous version (one request at a time per worker); ASGI added async so
+one process can hold many open connections. Knowing the pair and which is async
+is enough.
+
+**`api.main:app`.** A coordinate: module path, colon, variable name. "In
+`api/main.py`, find `app`."
+
+**Routing via decorators.** `@app.get("/health")` registers the function below it
+in the routing table. You never call it; FastAPI does when a matching request
+arrives. Path parameters `{device_id}` become function arguments by name.
+
+**Type hints as enforcement, not documentation.** `device_id: int` makes FastAPI
+coerce `"42"` → `42` and reject `/devices/banana` with 422 *before the handler
+runs*. Behaviour obtained by declaring a type.
+
+**Pydantic models** do four jobs from one class declaration: validate incoming
+data, coerce where unambiguous, serialize outgoing responses, and describe
+themselves in the OpenAPI spec.
+
+**Modelling for testability.** `status` is an `Enum`, not a `str`, specifically
+so the constraint `enum: [online, offline, degraded]` lands in the spec where a
+validator can check it. A free-form string is **unfalsifiable** — no response
+could ever violate it. Constraints you don't declare are constraints the harness
+can never verify. This is a design decision driven by testability rather than by
+correctness, and it's a good one to be able to articulate.
+
+**Type hints become the contract.** FastAPI generates a full OpenAPI document at
+`/openapi.json` from the signatures and models. `/docs` is just that spec
+rendered. The written promise that project 1 got from 3GPP TS 27.007 is here
+produced by the code itself.
+
+**The tautology trap (the sharpest idea so far).** Because the spec is *generated
+from* the code, the code cannot violate it — change a field and the spec
+regenerates to match. A promise that rewrites itself to match your behaviour is
+not a promise, and a suite testing against it is circular. Day 5 fixes this by
+exporting the spec to a committed `spec/openapi.json` and testing against that
+frozen copy, with a CI drift check. Expect to be asked about this.
+
+**Errors as exceptions.** `raise HTTPException(status_code=404, detail=...)`
+rather than returning an error value: FastAPI converts it to a proper response,
+and the error path can't be silently ignored. The default body shape
+(`{"detail": ...}`) is FastAPI's; Day 4 replaces it with a declared error model
+so error responses are contract-checkable too.
+
+**Why a dict instead of a database.** The service exists to be tested, not to
+persist. A database adds migrations, pooling, teardown, and a category of failure
+unrelated to contract testing. A dict makes every test start from a known state
+via one `reset()`.
+
+**Test independence.** Resetting the store before each test (via an
+`autouse=True` fixture) removes **test-order dependence** — the "passes alone,
+fails in the suite" bug, and cause #2 on the Day 0 flakiness list. Eliminated by
+construction rather than by careful ordering.
+
+**Determinism as an anti-flakiness measure.** `list_devices()` sorts explicitly.
+A dict preserves insertion order so results would *probably* be consistent — and
+"probably consistent" is exactly what produces a test that fails once a month.
+
+**TestClient vs real HTTP.** `TestClient` drives the app in-process: no server,
+no port, no sockets. Fast and deterministic, and it answers *"is my application
+logic correct?"* It cannot catch anything involving real wire serialization,
+connection handling, or deployment. The harness (Day 7+) uses real HTTP through a
+real proxy to answer a different question: *"does the deployed service honour its
+contract?"* Both are worth having; the same split existed in project 1 as
+in-process unit tests plus socket-level integration tests.
+
+### Day 3 flashcards
+
+1. **What's the difference between uvicorn and FastAPI?** — uvicorn is the ASGI
+   web server that owns the socket and speaks HTTP; FastAPI is the framework that
+   routes parsed requests to your code. Separate packages, separate jobs.
+2. **What is ASGI, and how does it differ from WSGI?** — The interface between
+   server and framework. WSGI is synchronous, one request at a time per worker;
+   ASGI is the async successor and supports many concurrent connections.
+3. **What does `api.main:app` mean?** — Module path, colon, variable name: the
+   `app` object inside `api/main.py`.
+4. **What work do the type hints actually do?** — Coercion and validation.
+   `device_id: int` converts the URL string to an int and returns 422 for
+   non-numeric input before the handler runs. It also feeds spec generation.
+5. **Why is `status` an enum rather than a string?** — So the allowed values
+   appear as a constraint in the spec and become checkable. A free-form string
+   is unfalsifiable.
+6. **Where does the OpenAPI spec come from?** — Generated by FastAPI from the
+   function signatures and Pydantic models, served at `/openapi.json`.
+7. **Why is testing against a live-generated spec circular, and what's the
+   fix?** — The spec regenerates from the code, so the code can't violate it. Fix
+   is pinning the spec as a committed artifact and adding a CI drift check
+   (Day 5).
+8. **Why raise `HTTPException` instead of returning an error?** — FastAPI turns
+   it into a proper HTTP response, and an exception can't be silently ignored the
+   way a returned error value can.
+9. **Why reset the store before every test?** — Test independence. Without it,
+   one test's writes change another's result — test-order dependence, a classic
+   flakiness cause.
+10. **Why sort the device list explicitly?** — Determinism. Relying on incidental
+    dict ordering produces a test that passes reliably until it suddenly doesn't.
+11. **TestClient vs the harness — why have both?** — TestClient is fast,
+    in-process, and checks application logic. The harness uses real HTTP against
+    a deployed service to check contract conformance and catch network-level and
+    timing problems TestClient structurally cannot see.
+
+### Day 3 design decisions to defend
+
+- **Enum-constrained `status` field.** Chosen so the contract has a constraint
+  worth verifying. Modelling driven by testability.
+- **In-memory dict rather than a database.** Keeps the system under test focused
+  on the contract; avoids a whole class of infrastructure failure irrelevant to
+  the thing being demonstrated.
+- **Explicit sort in `list_devices()`.** Deterministic responses by construction,
+  rather than relying on an implementation detail that happens to be stable.
+- **`autouse` reset fixture.** Test independence enforced structurally, not by
+  convention or discipline.
+- **Split `models.py` / `store.py` / `main.py` rather than one file.** On Day 6
+  the seeded bug modes arrive; keeping honest code separate from injected faults
+  is what keeps that legible.
+- **Deleted `hello.py` on schedule.** The placeholder existed to prove the
+  pipeline before anything real depended on it. Removing it is the plan working.
+
+---
+
+*Next: Day 4 primer — the rest of CRUD, HTTP semantics for create/update/delete,
+and giving errors a declared shape of their own.*

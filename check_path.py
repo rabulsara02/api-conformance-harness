@@ -15,7 +15,7 @@ import time
 import urllib.error
 import urllib.request
 
-TARGET = "http://proxy:8080/"
+TARGET = "http://proxy:8080/health"
 DEADLINE_SECONDS = 20
 
 

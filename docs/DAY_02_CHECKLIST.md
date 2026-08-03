@@ -17,7 +17,17 @@ Day 3 starts building for real.
 
 ## Progress log (updated as we go)
 
-**Status: not started.**
+**Status: ✅ DAY 2 COMPLETE.** Parts A–G done and pushed.
+
+**Done-when gate met:** `SUCCESS: harness -> proxy -> api path is working` —
+bytes travelled across three containers, resolved by service name, on a private
+Compose network.
+
+Commit: `e0d71ac  Dockerfile, compose skeleton, three-service path verified`
+
+Phase 0 (infrastructure de-risking) is now closed. Everything that could have
+surprised us later — CI, containers, multi-service networking — is proven while
+each piece was still trivial. Day 3 starts the actual product.
 
 ---
 
@@ -277,7 +287,7 @@ on top of it.
 
 **1. Start Docker Desktop.**
 
-- [ ] Open the Docker Desktop app and wait for the whale icon in your menu bar to
+- [x] Open the Docker Desktop app and wait for the whale icon in your menu bar to
       stop animating.
 
 *Why:* the `docker` command is just a client. It talks to a background service
@@ -286,7 +296,7 @@ fails with "Cannot connect to the Docker daemon."
 
 **2. Check the client and daemon.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 docker --version
@@ -313,7 +323,7 @@ subcommand. If you see the hyphenated form in an old tutorial, that's why.
 Doing this before the Dockerfile is deliberate — if you build first, you'll copy
 your entire `.venv` into the image and wonder why it takes two minutes.
 
-- [ ] Create `.dockerignore` in the repo root:
+- [x] Create `.dockerignore` in the repo root:
 
 ```
 # Keep the build context small: these are never copied into the image.
@@ -329,7 +339,7 @@ reports/
 
 **4. Create the `Dockerfile`.**
 
-- [ ] Create `Dockerfile` (no extension) in the repo root:
+- [x] Create `Dockerfile` (no extension) in the repo root:
 
 ```dockerfile
 # Dockerfile — packages this project into a self-contained image.
@@ -364,7 +374,7 @@ downside.
 
 **5. Build.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 docker build -t api-conformance-harness .
@@ -380,7 +390,7 @@ Watch the first line of output: it reports the context size. It should be small
 
 **6. Run your test suite inside the container.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 docker run --rm api-conformance-harness
@@ -396,8 +406,8 @@ solved at the root, not patched over.
 
 **7. Prove the layer cache works (worth seeing once).**
 
-- [ ] Edit `hello.py` — add a blank line, save.
-- [ ] Rebuild:
+- [x] Edit `hello.py` — add a blank line, save.
+- [x] Rebuild:
 
 ```bash
 docker build -t api-conformance-harness .
@@ -415,7 +425,7 @@ check the order.
 
 **8. Write the reachability check the harness will run.**
 
-- [ ] Create `check_path.py` in the repo root:
+- [x] Create `check_path.py` in the repo root:
 
 ```python
 """
@@ -489,7 +499,7 @@ and the reason it exists is written down there.
 
 **9. Write `docker-compose.yml`.**
 
-- [ ] Create `docker-compose.yml` in the repo root:
+- [x] Create `docker-compose.yml` in the repo root:
 
 ```yaml
 # docker-compose.yml — the three services this project needs.
@@ -546,7 +556,7 @@ services:
 
 **10. Bring the stack up.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 docker compose up --build
@@ -571,7 +581,7 @@ doing its job* — the api hadn't finished binding. Working as designed; it's th
 
 **11. Stop it.**
 
-- [ ] Press `Ctrl+C`, then clean up:
+- [x] Press `Ctrl+C`, then clean up:
 
 ```bash
 docker compose down
@@ -585,7 +595,7 @@ stopped containers all project.
 
 Understanding *why* something works beats watching it work.
 
-- [ ] In `check_path.py`, temporarily change `TARGET` to
+- [x] In `check_path.py`, temporarily change `TARGET` to
       `"http://localhost:8080/"` and run `docker compose up --build` again.
 
 ✅ *Worked when:* the harness retries for 20 seconds and then fails with
@@ -595,7 +605,7 @@ That failure is the lesson: inside the harness container, `localhost` is the
 *harness itself*, which has nothing listening on 8080. The proxy is a different
 container and is only reachable by its name.
 
-- [ ] Change it back to `"http://proxy:8080/"` and confirm success returns.
+- [x] Change it back to `"http://proxy:8080/"` and confirm success returns.
 
 ---
 
@@ -603,7 +613,7 @@ container and is only reachable by its name.
 
 **13. Confirm nothing unwanted is staged.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 git status --short
@@ -615,7 +625,7 @@ git status --short
 
 **14. Commit and push.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 git add .
@@ -623,7 +633,7 @@ git commit -m "Day 2: Dockerfile, compose skeleton, three-service path verified"
 git push
 ```
 
-- [ ] Check the Actions tab — CI should still be green. Nothing today changed the
+- [x] Check the Actions tab — CI should still be green. Nothing today changed the
       test suite, and that's worth confirming rather than assuming.
 
 *Note:* CI does **not** run Docker yet. The workflow still just installs
@@ -636,17 +646,17 @@ on Day 16, once there's a real suite worth orchestrating.
 
 **15. Update this checklist.**
 
-- [ ] Tick the boxes and fill in the progress log at the top with anything that
+- [x] Tick the boxes and fill in the progress log at the top with anything that
       differed from the plan.
 
 **16. Review.**
 
-- [ ] Read the Day 2 section of `LEARNING_NOTES.md` and try the flashcards out
+- [x] Read the Day 2 section of `LEARNING_NOTES.md` and try the flashcards out
       loud.
 
 **17. Look ahead.**
 
-- [ ] Skim `docs/PROJECT_PLAN.md` §5, Day 3. Tomorrow the real code starts:
+- [x] Skim `docs/PROJECT_PLAN.md` §5, Day 3. Tomorrow the real code starts:
       FastAPI, and the first endpoints of the device registry.
 
 ---
