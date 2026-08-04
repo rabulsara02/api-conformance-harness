@@ -17,7 +17,29 @@ Phase 2 starts here. From now on, the harness is the job.
 
 ## Progress log (updated as we go)
 
-**Status: not started.**
+**Status: ✅ DAY 7 COMPLETE.** Pushed, CI green.
+
+**Done-when gate met:** 85 tests passing; the harness drives real HTTP over a
+real socket to a separately running process; the boundary test was watched
+failing and recovering; the suite ran green against a server started by hand on
+port 9001 via `HARNESS_BASE_URL`.
+
+**The abstraction is now in place.** `build_transport()` is the only function in
+the harness that names a concrete implementation. If a second one ever appears,
+the abstraction has started leaking — that is the thing to watch for on Day 11.
+
+**Real bug avoided by running the code:** httpx reads `HTTP_PROXY` /
+`HTTPS_PROXY` / `ALL_PROXY` from the environment by default. On a machine with
+`ALL_PROXY` set it failed with a confusing SOCKS import error rather than an
+obvious one. Fixed with `trust_env=False` — the harness controls its own routing,
+which matters twice over given that we run our own proxy from Day 11.
+
+**Known limitation, named rather than discovered later:** `live_server` runs the
+same `app` object in a background thread of the same Python process that
+`test_api.py` drives via `TestClient`, so both share the module-level store. Safe
+today (the in-process suite resets before each test; the harness tests read or
+create without asserting on totals) but it is genuine shared state. Under
+`docker compose` the service is a separate process and no sharing exists.
 
 ---
 
@@ -213,13 +235,13 @@ down, so a test that says "the contract declares X" needs no server at all.
 
 **1. Create the package.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 mkdir -p harness
 ```
 
-- [ ] Create `harness/__init__.py`:
+- [x] Create `harness/__init__.py`:
 
 ```python
 """
@@ -234,7 +256,7 @@ a boundary nobody checks is a boundary that erodes.
 
 **2. Create `harness/config.py`.**
 
-- [ ] Create the file:
+- [x] Create the file:
 
 ```python
 """
@@ -317,7 +339,7 @@ class HarnessConfig:
 
 **3. Create `harness/transport.py`.**
 
-- [ ] Create the file:
+- [x] Create the file:
 
 ```python
 """
@@ -552,7 +574,7 @@ def build_transport(config: "object") -> Transport:
 
 **4. Create `harness/spec.py`.**
 
-- [ ] Create the file:
+- [x] Create the file:
 
 ```python
 """
@@ -637,7 +659,7 @@ def declared_operations(contract: dict[str, Any]) -> list[tuple[str, str]]:
 
 **5. Create `conftest.py` in the repo root.**
 
-- [ ] Create the file:
+- [x] Create the file:
 
 ```python
 """
@@ -767,7 +789,7 @@ def contract() -> dict:
 
 **6. Create `test_transport.py` in the repo root.**
 
-- [ ] Create the file:
+- [x] Create the file:
 
 ```python
 """
@@ -1009,7 +1031,7 @@ def test_harness_never_imports_the_application():
 
 **7. Run the suite.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 pytest -q
@@ -1025,13 +1047,13 @@ session — the price of testing over real HTTP, and worth it.
 Same discipline as Day 1's CI break and Day 5's drift check. A guard you've never
 seen fire is indistinguishable from one that checks nothing.
 
-- [ ] Temporarily add this line to the top of `harness/spec.py`:
+- [x] Temporarily add this line to the top of `harness/spec.py`:
 
 ```python
 from api.main import app  # deliberate violation
 ```
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 pytest test_transport.py::test_harness_never_imports_the_application -q
@@ -1039,7 +1061,7 @@ pytest test_transport.py::test_harness_never_imports_the_application -q
 
 ✅ *Worked when:* it **fails**, naming the file and line number.
 
-- [ ] Remove the line and confirm the suite is green again.
+- [x] Remove the line and confirm the suite is green again.
 
 ---
 
@@ -1050,13 +1072,13 @@ rather than believing it.
 
 **9. Start the service yourself, then point the harness at it.**
 
-- [ ] In one terminal:
+- [x] In one terminal:
 
 ```bash
 uvicorn api.main:app --port 9001
 ```
 
-- [ ] In another:
+- [x] In another:
 
 ```bash
 HARNESS_BASE_URL=http://127.0.0.1:9001 pytest test_transport.py -q
@@ -1069,7 +1091,7 @@ HARNESS_BASE_URL=http://127.0.0.1:9001 pytest test_transport.py -q
 interview: the same suite runs against a local process, a container, or a
 deployment, decided entirely by an environment variable.
 
-- [ ] Stop the manual server.
+- [x] Stop the manual server.
 
 ---
 
@@ -1077,7 +1099,7 @@ deployment, decided entirely by an environment variable.
 
 **10. Commit and push.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 git status --short
@@ -1086,7 +1108,7 @@ git commit -m "Day 7: Transport interface, harness config, contract loader, live
 git push
 ```
 
-- [ ] Confirm CI goes green.
+- [x] Confirm CI goes green.
 
 *Watch this CI run.* It's the first time CI starts a real server in a background
 thread. If it's flaky there but fine locally, the readiness poll is the place to
@@ -1098,18 +1120,18 @@ look.
 
 **11. Update this checklist.**
 
-- [ ] Tick the boxes and record anything that differed in the progress log.
+- [x] Tick the boxes and record anything that differed in the progress log.
 
 **12. Review.**
 
-- [ ] Read the Day 7 section of `LEARNING_NOTES.md` and try the flashcards aloud.
+- [x] Read the Day 7 section of `LEARNING_NOTES.md` and try the flashcards aloud.
       The one to be fluent on is *why the harness must not import the app* —
       it's the difference between a unit test and a conformance harness, and
       it's the question that separates a real answer from a memorised one.
 
 **13. Look ahead.**
 
-- [ ] Skim `PROJECT_PLAN.md` Day 8. Tomorrow the validator starts: status-code
+- [x] Skim `PROJECT_PLAN.md` Day 8. Tomorrow the validator starts: status-code
       declaration checks, content-type checks, and `$ref` resolution — the
       mechanism that turns the pinned contract into an oracle.
 

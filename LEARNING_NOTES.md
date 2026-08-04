@@ -1300,5 +1300,137 @@ cannot reproduce is an anecdote.
 
 ---
 
-*Next: Day 8 primer — JSON Schema, `$ref` resolution, and building the validator
-that turns the pinned contract into an oracle.*
+---
+
+## Day 8 — The validator, part 1: the contract becomes an oracle
+
+Full primer in `docs/DAY_08_CHECKLIST.md`. Distilled below.
+
+### Concepts introduced
+
+**The oracle moves from code to document.** On Day 1 the oracle was a hard-coded
+`== 2`, written by hand, one per behaviour. Now it's the pinned contract, and one
+validator checks every endpoint — which is why it keeps working as the API grows
+and catches breakage nobody thought to write a test for. That shift is the whole
+difference between example-based assertions and conformance testing.
+
+**Structured violations, not booleans.** `check_response` returns a *list* of
+`Violation` objects carrying `kind`, `location`, `expected`, `actual`, `message`.
+Four consumers need different parts: the classifier branches on `kind`, the HTML
+report shows `expected` beside `actual`, humans read `message`, and the flake
+detector needs a stable identity to tell "same failure again" from "a different
+one". A bool throws all of that away and forces every later stage to re-derive
+what the validator already knew. A list because one response can break the
+contract several ways at once.
+
+**Check 1 — undeclared status.** If the contract says `GET /devices/{id}` answers
+200/404/422, a 500 isn't "an error", it's a response the document never said was
+possible; a client written against the document has no branch for it. Catches two
+seeded bugs: `wrong_status` and `undeclared_500`.
+
+**Check 2 — content type, and the 204 case.** A declared response with no
+`content` key is a promise that *there is no body*. A 204 arriving with a
+serialized `null` violates it — the protocol bug flagged on Day 4, now enforced
+rather than trusted. Content-type checking is also what turns "the JSON didn't
+parse" from a crash into a diagnosis when a proxy returns an HTML error page.
+
+**`$ref` resolution must be recursive.** In our own spec, `Device.properties.status`
+is only a *pointer*; the allowed values live in a separate schema object. And it
+nests: `DevicePage → items → element → $ref → Device → status → $ref →
+DeviceStatus`. Following one pointer is not enough — the whole schema tree has to
+be walked.
+
+**Two details separating a real resolver from a naive one:**
+- **Siblings beside `$ref` must survive.** OpenAPI 3.1 permits keys alongside a
+  ref, and our spec has a `description` there. Replacing the object wholesale
+  deletes them silently. Resolve the target, then lay local keys on top so local
+  wins.
+- **Cycles must terminate.** A self-referencing schema makes naive recursion loop
+  forever, and the harness hangs with no message — the worst failure mode for a
+  test tool, because a hang looks like slowness rather than a bug. Track refs on
+  the current path and stop on repeat.
+
+**Path-template matching, and the same ambiguity as Day 4.** `/devices/search`
+matches both the literal template and `/devices/{device_id}`. Pick wrong and
+every search response is validated against the single-device schema, producing
+confident nonsense. Rule: **specific beats parametrized** — score by literal
+segments. Day 4 was route registration order on the *server*; this is template
+selection on the *client*. Same ambiguity, opposite side of the wire, which
+suggests it's a real property of URL design rather than a framework quirk.
+
+**`[^/]+`, not `.+`.** A path parameter is exactly one segment. With `.+`,
+`/devices/{device_id}` would swallow `/devices/1/status` and PATCH responses
+would be checked against the GET schema.
+
+**Local refs only.** Remote `$ref`s (pointing at other files or URLs) are refused
+deliberately: a contract that must fetch part of itself over the network cannot be
+pinned, and pinning is the basis of the project.
+
+**Short-circuit on undeclared status.** Once the status isn't declared there is no
+declared response object left to check content type against, so continuing would
+measure against nothing. One precise violation beats a cascade of derived noise —
+for the classifier and for the human.
+
+**Unit tests with fabricated responses.** Fast, deterministic, and they let us
+construct the impossible: the content-type test needs a response claiming
+`text/html`, which our service will never send. Isolation too — a failure means
+the validator is wrong, not the network or the service.
+
+**Knowing what your tool cannot yet catch is worth more than assuming it catches
+everything.** After today the validator detects 2 of 6 seeded bugs.
+`missing_field`, `wrong_type` and `bad_enum` need body validation (Day 9), and
+`off_by_one_page` needs declarative assertions (also Day 9) because it is
+schema-valid by construction.
+
+### Day 8 flashcards
+
+1. **What is the oracle in this project, and why does that matter?** — The pinned
+   contract. It means one validator checks every endpoint, instead of one
+   hand-written expectation per behaviour.
+2. **Why return structured violations rather than a bool?** — The classifier
+   branches on kind, the report needs expected/actual, humans need a message, and
+   the flake detector needs a stable failure identity.
+3. **Why a list of violations?** — One response can break the contract in several
+   ways; reporting only the first hides the rest.
+4. **What does an undeclared status code mean?** — The service returned something
+   the document never said was possible, so no client written against the
+   document handles it.
+5. **What does a declared response with no `content` promise?** — That there is no
+   body. A 204 carrying `null` violates it.
+6. **Why must `$ref` resolution be recursive?** — Refs nest through properties and
+   array element schemas; following one pointer leaves the rest unresolved.
+7. **What breaks if you replace a `$ref` object wholesale?** — Sibling keys
+   permitted by OpenAPI 3.1, such as a local `description`, are silently lost.
+8. **Why guard against cycles?** — A self-referencing schema loops forever, and
+   the harness hangs with no error — indistinguishable from a slow test.
+9. **Why does `/devices/search` need special handling?** — It matches both a
+   literal template and a parametrized one. Specific must win, or search
+   responses get validated against the wrong schema.
+10. **Why `[^/]+` rather than `.+` in the path regex?** — A path parameter is one
+    segment; `.+` would let `/devices/{id}` match `/devices/1/status`.
+11. **Why refuse remote `$ref`s?** — A contract that fetches part of itself can't
+    be pinned.
+12. **Why stop after an undeclared status?** — No declared response object remains
+    to check anything else against, so further checks measure nothing.
+
+### Day 8 design decisions to defend
+
+- **Hand-wrote the validator rather than reaching for a library.** Owning
+  response validation at this level is the point; schemathesis (Day 10) does a
+  different job — generating adversarial inputs — and does not replace this.
+- **`Violation` frozen and structured.** A report should describe what happened;
+  a mutable record invites editing it after the fact.
+- **Coarse `ViolationKind` enum.** These are the distinctions the classifier
+  needs; finer detail belongs in the message, or Day 14 becomes an unreadable
+  lookup table.
+- **Specificity scoring for path templates.** The alternative — first match wins
+  — silently depends on dict ordering.
+- **Cycle guard included despite no cycles in our spec.** A validator that hangs
+  on a legal document is broken; better found here than while pointed at someone
+  else's API.
+- **Short-circuit after `UNDECLARED_STATUS`.** Precision over volume.
+
+---
+
+*Next: Day 9 primer — JSON Schema validation of bodies, declarative YAML test
+plans, and the run summary. The remaining four seeded bugs become catchable.*
