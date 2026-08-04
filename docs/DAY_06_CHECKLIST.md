@@ -14,7 +14,29 @@ changing and the harness becomes the whole job.
 
 ## Progress log (updated as we go)
 
-**Status: not started.**
+**Status: ✅ DAY 6 COMPLETE — and PHASE 1 with it.** Pushed, CI green.
+
+**Done-when gate met:** 68 tests passing; all six modes visibly break the
+contract; `spec/openapi.json` byte-identical under every mode (verified by a test
+parametrized across all seven); an unknown `BUG_MODE` fails loudly at startup;
+`api/` frozen.
+
+**Phase 1 closed.** The service under test is finished: 8 endpoints, a status
+state machine, a declared error envelope, pagination with declared bounds, a
+pinned contract, and six labelled defects. It does not change again except to fix
+a bug mode.
+
+**The ground-truth table now exists** (`TRUE_LABEL` in `api/bugs.py`). Day 14's
+selfcheck iterates over it, which is what will make the classifier's accuracy a
+measurement rather than a claim — the same move that produced project 1's 100%
+figure.
+
+**Carried forward into Phase 2:** `off_by_one_page` satisfies the schema
+completely while being plainly wrong, so it is *not* catchable by schema
+validation alone. It is the reason Day 9 must add declarative assertions about
+meaning (`len(items) <= limit`) on top of the Day 8 schema checker. If that
+second mechanism ever gets cut for time, this bug mode goes undetected and the
+accuracy figure silently drops.
 
 ---
 
@@ -215,7 +237,7 @@ week: write it in the plan's stretch list and move on.
 
 **1. Create `api/bugs.py`.**
 
-- [ ] Create the file:
+- [x] Create the file:
 
 ```python
 """
@@ -470,13 +492,13 @@ class BugInjectionMiddleware(BaseHTTPMiddleware):
 
 **2. Wire it into `api/main.py`.**
 
-- [ ] Add the import next to the other `api` imports:
+- [x] Add the import next to the other `api` imports:
 
 ```python
 from api.bugs import BugInjectionMiddleware, load_mode_from_env, set_mode
 ```
 
-- [ ] Add these two lines immediately **after** the
+- [x] Add these two lines immediately **after** the
       `register_error_handlers(app)` line:
 
 ```python
@@ -490,7 +512,7 @@ app.add_middleware(BugInjectionMiddleware)
 
 **3. Confirm the contract did not move.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 pytest test_spec_drift.py -q
@@ -509,7 +531,7 @@ with the ball.
 
 **4. Start the healthy service in one terminal.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 uvicorn api.main:app --reload
@@ -518,14 +540,14 @@ curl -s http://127.0.0.1:8000/devices/1
 
 ✅ *Worked when:* `{"id":1,"name":"edge-router-01","status":"online"}` — clean.
 
-- [ ] Stop it with `Ctrl+C`.
+- [x] Stop it with `Ctrl+C`.
 
 **5. Now run each bug mode and see the damage.**
 
 Each command below starts the server with one mode active. Run it, curl, then
 `Ctrl+C` before the next.
 
-- [ ] `missing_field`:
+- [x] `missing_field`:
 
 ```bash
 BUG_MODE=missing_field uvicorn api.main:app
@@ -538,7 +560,7 @@ curl -s http://127.0.0.1:8000/devices/1
 ✅ Expect `{"id":1,"status":"online"}` — `name` is gone, and the spec lists it as
 required.
 
-- [ ] `wrong_type`:
+- [x] `wrong_type`:
 
 ```bash
 BUG_MODE=wrong_type uvicorn api.main:app
@@ -550,7 +572,7 @@ curl -s http://127.0.0.1:8000/devices/1
 
 ✅ Expect `{"id":"1",...}` — note the quotes. The spec says integer.
 
-- [ ] `bad_enum`:
+- [x] `bad_enum`:
 
 ```bash
 BUG_MODE=bad_enum uvicorn api.main:app
@@ -562,7 +584,7 @@ curl -s http://127.0.0.1:8000/devices/1
 
 ✅ Expect `"status":"exploded"` — not one of the three declared values.
 
-- [ ] `wrong_status`:
+- [x] `wrong_status`:
 
 ```bash
 BUG_MODE=wrong_status uvicorn api.main:app
@@ -576,7 +598,7 @@ curl -i -s -X POST http://127.0.0.1:8000/devices \
 ✅ Expect `HTTP/1.1 200 OK`. The spec declares 201, 409, 422 for this endpoint —
 200 is not among them.
 
-- [ ] `undeclared_500`:
+- [x] `undeclared_500`:
 
 ```bash
 BUG_MODE=undeclared_500 uvicorn api.main:app
@@ -588,7 +610,7 @@ curl -i -s http://127.0.0.1:8000/devices/1
 
 ✅ Expect `HTTP/1.1 500`. No endpoint declares a 500 anywhere.
 
-- [ ] `off_by_one_page` — **look closely at this one**:
+- [x] `off_by_one_page` — **look closely at this one**:
 
 ```bash
 BUG_MODE=off_by_one_page uvicorn api.main:app
@@ -608,7 +630,7 @@ That's the point of this mode, and it's why Day 9 adds hand-written declarative
 assertions on top of schema validation. *Not every contract violation is a schema
 violation.*
 
-- [ ] Confirm a bad mode name fails loudly:
+- [x] Confirm a bad mode name fails loudly:
 
 ```bash
 BUG_MODE=typo uvicorn api.main:app
@@ -624,7 +646,7 @@ active, and your accuracy figure would come out *too good*.
 
 **6. Create `test_bugs.py` in the repo root.**
 
-- [ ] Create the file:
+- [x] Create the file:
 
 ```python
 """
@@ -814,7 +836,7 @@ def test_unknown_mode_name_is_rejected():
 
 **7. Run the suite.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 pytest -q
@@ -833,7 +855,7 @@ sides of the `yield`.
 
 **8. Add the bug-mode matrix to `README.md`.**
 
-- [ ] Append to `README.md`:
+- [x] Append to `README.md`:
 
 ```markdown
 ## Seeded bug modes
@@ -871,7 +893,7 @@ is what makes the violations detectable.
 
 **9. Freeze the service under test.**
 
-- [ ] Add this to the top of `api/__init__.py`, replacing the existing docstring:
+- [x] Add this to the top of `api/__init__.py`, replacing the existing docstring:
 
 ```python
 """
@@ -896,7 +918,7 @@ spec/openapi.json.
 
 **10. Update the plan's status.**
 
-- [ ] In `docs/PROJECT_PLAN.md` §5, mark Phase 1 (Days 3–6) complete. Phase 2
+- [x] In `docs/PROJECT_PLAN.md` §5, mark Phase 1 (Days 3–6) complete. Phase 2
       starts tomorrow.
 
 ---
@@ -905,7 +927,7 @@ spec/openapi.json.
 
 **11. Confirm the containerized stack still works.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 docker compose up --build
@@ -917,7 +939,7 @@ is set in Compose, so the service runs healthy — which is the correct default.
 
 **12. Commit and push.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 git status --short
@@ -926,7 +948,7 @@ git commit -m "Day 6: six seeded bug modes in one middleware; service under test
 git push
 ```
 
-- [ ] Confirm CI goes green.
+- [x] Confirm CI goes green.
 
 ---
 
@@ -934,18 +956,18 @@ git push
 
 **13. Update this checklist.**
 
-- [ ] Tick the boxes and record anything that differed in the progress log.
+- [x] Tick the boxes and record anything that differed in the progress log.
 
 **14. Review.**
 
-- [ ] Read the Day 6 section of `LEARNING_NOTES.md` and try the flashcards aloud.
+- [x] Read the Day 6 section of `LEARNING_NOTES.md` and try the flashcards aloud.
       The one to be fluent on is *why ground truth is required to report an
       accuracy figure* — it's the argument that makes the whole project's
       headline number credible.
 
 **15. Look ahead.**
 
-- [ ] Skim `PROJECT_PLAN.md` Phase 2. **Tomorrow the harness begins**: a
+- [x] Skim `PROJECT_PLAN.md` Phase 2. **Tomorrow the harness begins**: a
       `Transport` interface, a pytest fixture that drives real HTTP, and the
       first request checked against the pinned contract. Everything so far has
       been building the thing to be tested; from here you build the thing that

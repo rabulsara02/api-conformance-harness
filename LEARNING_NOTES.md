@@ -1154,6 +1154,151 @@ the skill.
 
 ---
 
-*Next: Day 7 primer — dependency inversion for HTTP, the `Transport` interface,
-pytest fixtures at session scope, and the first request driven against the pinned
-contract. Phase 2 begins: the harness itself.*
+---
+
+## Day 7 — The Transport interface, and the boundary that makes it mean something
+
+Full primer in `docs/DAY_07_CHECKLIST.md`. Distilled below. Phase 2 starts here.
+
+### Concepts introduced
+
+**Dependency inversion, restated for HTTP.** High-level code (the harness)
+depends on an *abstraction* (`Transport`), not a concrete detail (httpx, a
+socket, a serial port). Concrete implementations depend on the abstraction too.
+Project 1: `TcpTransport` → simulator, `SerialTransport` → real modem. Here:
+`DirectTransport` → the API, `ProxyTransport` → through the fault proxy. The
+practical test of whether it's right: *can you swap the implementation without
+touching a line above it?* On Day 11 the network path gains fault injection and
+the validator, runner and test plans change by zero lines.
+
+**Return your own type, not the library's.** If `request()` handed back httpx
+responses, every layer above would depend on httpx and the abstraction would be
+decorative. A small `HttpResponse` keeps the boundary real — and carries
+`elapsed_ms`, so timing is measured once in one place rather than ad hoc by every
+caller that needs it.
+
+**THE BOUNDARY — the harness must never import the app.** `TestClient` runs the
+app in-process and answers *"is my application logic correct?"* The harness uses
+real HTTP to a separately running process and answers *"does the deployed service
+honour its contract?"* The second question is unanswerable in-process: wire
+serialization (the Day 6 `Content-Length` bug is invisible to `TestClient`),
+connection handling, timeouts, anything a proxy does, and whether the service
+starts at all.
+
+**Enforced, not merely intended.** A test reads every file in `harness/` and
+fails if `import api` appears. Reading the *source* rather than inspecting
+`sys.modules` catches a violation even when the import sits inside a function
+that never runs. A rule nobody checks is a rule that erodes.
+
+**The `conftest.py` nuance.** The fixture *does* import the app, to start a
+server for local convenience. That's not cheating, because the distinction is
+between the product and its scaffolding: `harness/` must work against a service
+it did not start; `conftest.py` just makes `pytest` a one-command experience. The
+proof the boundary is real is that `HARNESS_BASE_URL=...` points the same suite
+at a container or a deployment with no code change — demonstrated by running it
+against a manually started server on another port.
+
+**Fixture scope.** `function` (per test, default), `module` (per file), `session`
+(per run). The server is session-scoped because starting one costs ~100ms and
+doing it 40 times would add seconds for nothing. Accepting shared state is
+exactly what causes test-order dependence, so it's a tradeoff taken knowingly:
+safe while the harness only reads, and Day 9's mutating cases will have to manage
+their own state deliberately.
+
+**`yield` fixtures** run teardown after the `yield`, guaranteed even when a test
+fails.
+
+**Handing a live socket to the server, not a port number.** Looking up a free
+port, closing it, then rebinding leaves a window where another process can take
+it — an intermittent failure, i.e. a flaky test, inside the project built to
+detect flaky tests. Binding once and passing the open socket removes the race.
+
+**Started ≠ ready, again.** The fixture polls `server.started` against a deadline
+rather than sleeping a guessed interval — the same lesson as Day 2's
+`depends_on`, now inside our own test infrastructure.
+
+**The transport must not raise on 4xx/5xx.** An error status is *data* the
+harness needs to examine; half the contract is about error responses. Pinned by a
+test so nobody adds a `raise_for_status()` while tidying. Transport-level
+failures (connection refused, DNS, timeout) *may* raise — those are genuinely
+different, there is no HTTP response at all, and on Day 14 they classify as
+`environment`. The distinction between "answered badly" and "did not answer" is
+drawn at the lowest level because higher layers cannot recover it later.
+
+**`trust_env=False` — a real bug, found by running the code.** httpx reads
+`HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` from the environment by default and
+silently routes through whatever it finds. That makes results depend on a
+developer's shell (non-hermetic, same failure as an inaccurate
+`requirements.txt`) and would be miserable on Day 11, when we run our *own* proxy
+and need to know traffic goes where we sent it. It surfaced during development on
+a machine with `ALL_PROXY` set, as a confusing SOCKS import error.
+
+**The contract is read from disk, never from `GET /openapi.json`.** Reading it
+live would restore the Day 5 tautology. Bonus: the contract loads with the
+service down, so contract assertions need no server.
+
+**Configuration in one immutable object.** Every knob lives in `HarnessConfig`
+rather than being read from `os.environ` at point of use — because the Day 9 run
+summary prints the config, so any run is reproducible from its own report.
+Configuration scattered through the code cannot be reported, and a result you
+cannot reproduce is an anecdote.
+
+### Day 7 flashcards
+
+1. **What is dependency inversion, in this project?** — The harness depends on
+   the `Transport` abstraction rather than on httpx or a socket, so the
+   implementation can be swapped without changing anything above it.
+2. **How would you know the abstraction is right?** — Adding the fault proxy on
+   Day 11 requires no change to the validator, runner, or test plans.
+3. **Why return a custom `HttpResponse` instead of httpx's?** — Otherwise every
+   layer above depends on httpx and the abstraction is decorative.
+4. **Why must the harness never import the application?** — It has to answer
+   whether a *deployed* service honours its contract. In-process testing cannot
+   see wire serialization, connection handling, proxies, or startup.
+5. **Isn't importing the app in `conftest.py` the same violation?** — No.
+   `harness/` is the product and must work against a service it didn't start;
+   `conftest.py` is scaffolding for local convenience. `HARNESS_BASE_URL` proves
+   the boundary by pointing the same suite elsewhere.
+6. **How is the boundary enforced?** — A test scans `harness/*.py` for `import
+   api` and fails, naming file and line. Source scanning catches imports inside
+   functions that never execute.
+7. **Why session scope for the server, and what does it cost?** — Starting a
+   server is expensive relative to a test. The cost is shared state, which is the
+   root of test-order dependence, so it's only safe while tests don't mutate.
+8. **Why hand uvicorn an open socket rather than a port number?** — Closing a
+   probe socket and rebinding leaves a race window; losing it produces an
+   intermittent failure.
+9. **Why must the transport not raise on 4xx?** — Error responses are part of the
+   contract and must be inspectable, not escaped from.
+10. **When may the transport raise?** — Transport-level failure: connection
+    refused, DNS failure, timeout. No HTTP response exists, and that classifies
+    as `environment` later.
+11. **What does `trust_env=False` do and why does it matter?** — Stops httpx
+    reading proxy settings from the environment. Keeps runs hermetic, and keeps
+    traffic out of a proxy we didn't choose while building our own.
+12. **Why load the contract from a file rather than the live service?** — Reading
+    it live means grading the service against a description of itself.
+
+### Day 7 design decisions to defend
+
+- **`Transport` as an ABC with three methods.** The whole harness is written
+  against these; `build_transport` is the only place naming a concrete class. If
+  a second such place appears, the abstraction has started leaking.
+- **Custom `HttpResponse` carrying `elapsed_ms`.** Keeps httpx out of the upper
+  layers and makes latency available everywhere without each caller timing.
+- **`NotJsonError` as a distinct type.** On Day 11 the proxy truncates bodies on
+  purpose; "the JSON did not parse" becomes an expected, classifiable outcome
+  rather than a crash, and a type is more reliable to match on than a message.
+- **`ProxyTransport` named now, thin today.** A forward proxy is transparent, so
+  today it genuinely is a different base URL. It exists as a class because Day 11
+  needs somewhere to put fault-control logic that isn't every call site.
+- **`trust_env=False` and `follow_redirects=False`.** The harness controls its own
+  routing; a redirect is a contract-relevant fact for the validator to see, not
+  something to silently resolve.
+- **Boundary enforced by a test that was watched failing.** Same discipline as
+  the Day 1 CI break and the Day 5 drift check.
+
+---
+
+*Next: Day 8 primer — JSON Schema, `$ref` resolution, and building the validator
+that turns the pinned contract into an oracle.*
