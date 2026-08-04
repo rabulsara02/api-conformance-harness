@@ -15,7 +15,34 @@ service can no longer quietly rewrite its own promise.
 
 ## Progress log (updated as we go)
 
-**Status: not started.**
+**Status: ✅ DAY 5 COMPLETE.** Parts A–J done, pushed, CI green.
+
+**Done-when gate met:** 49 tests passing; illegal transitions return 409;
+pagination works with declared bounds; `spec/openapi.json` committed (23.5 KB);
+the drift check was watched failing and recovering.
+
+Commit: `abd5076  added status state machine, pagination, and a pinned OpenAPI contract`
+
+**Phase 1 is one day from done.** The contract now exists as a fixed artifact
+with a history, rather than as a description the code regenerates to match. From
+Day 8 the harness reads `spec/openapi.json` and never the live endpoint.
+
+- **Snag — the export script was pasted into `scripts/__init__.py` instead of
+  `scripts/export_spec.py`.** Step 8 creates the package marker; step 9 creates
+  the module. Both are needed, and only one file was written.
+
+  *Reading the error:* `No module named scripts.export_spec` — **not** `No module
+  named scripts`. Python found the package and failed to find the module inside
+  it. The error names exactly how far resolution got before giving up. Same
+  reading habit as the empty-`models.py` incident on Day 3: `ModuleNotFoundError`
+  on the package means a path problem; on the submodule it means a missing file.
+
+  *Fix:* `mv scripts/__init__.py scripts/export_spec.py`, then recreate
+  `__init__.py` with just its docstring.
+
+- **Note — `__init__.py` can be empty.** Its only job is to mark the directory as
+  an importable package. Putting real code in it works but hides the module's
+  identity, which is exactly how the confusion arose.
 
 ---
 
@@ -219,7 +246,7 @@ never seen fail is indistinguishable from one that's silently comparing nothing.
 
 **1. Add the new models to `api/models.py`.**
 
-- [ ] Append to the end of the file:
+- [x] Append to the end of the file:
 
 ```python
 class StatusUpdate(BaseModel):
@@ -262,7 +289,7 @@ class DevicePage(BaseModel):
 
 **2. Add the transition table and paging to `api/store.py`.**
 
-- [ ] Append to the end of the file (**above** the final `reset()` call — or
+- [x] Append to the end of the file (**above** the final `reset()` call — or
       simply add these functions before that last line):
 
 ```python
@@ -343,13 +370,13 @@ def page_devices(limit: int, offset: int) -> tuple[list[Device], int]:
 
 **3. Update `api/main.py`.**
 
-- [ ] Change the import line at the top to add `Query`:
+- [x] Change the import line at the top to add `Query`:
 
 ```python
 from fastapi import FastAPI, HTTPException, Query, Response, status
 ```
 
-- [ ] Change the models import to add the two new models:
+- [x] Change the models import to add the two new models:
 
 ```python
 from api.models import (
@@ -363,13 +390,13 @@ from api.models import (
 )
 ```
 
-- [ ] Bump the version — pagination is a **breaking** change to `GET /devices`:
+- [x] Bump the version — pagination is a **breaking** change to `GET /devices`:
 
 ```python
     version="0.3.0",
 ```
 
-- [ ] Replace the whole `list_devices` route with this paginated version:
+- [x] Replace the whole `list_devices` route with this paginated version:
 
 ```python
 @app.get(
@@ -409,7 +436,7 @@ def list_devices(
     return DevicePage(items=items, total=total, limit=limit, offset=offset)
 ```
 
-- [ ] Add the PATCH route at the **end** of the file:
+- [x] Add the PATCH route at the **end** of the file:
 
 ```python
 @app.patch(
@@ -461,13 +488,13 @@ def update_device_status(device_id: int, payload: StatusUpdate) -> Device:
 
 **4. Restart the server and walk the state machine.**
 
-- [ ] In one terminal:
+- [x] In one terminal:
 
 ```bash
 uvicorn api.main:app --reload
 ```
 
-- [ ] In another, device 2 starts `offline`. Try the illegal move first:
+- [x] In another, device 2 starts `offline`. Try the illegal move first:
 
 ```bash
 curl -i -X PATCH http://127.0.0.1:8000/devices/2/status \
@@ -477,7 +504,7 @@ curl -i -X PATCH http://127.0.0.1:8000/devices/2/status \
 ✅ *Worked when:* `409 Conflict` with
 `{"error":{"code":"conflict","message":"Illegal transition: offline -> degraded"}}`
 
-- [ ] Now the legal path:
+- [x] Now the legal path:
 
 ```bash
 curl -s -X PATCH http://127.0.0.1:8000/devices/2/status \
@@ -490,7 +517,7 @@ curl -s -X PATCH http://127.0.0.1:8000/devices/2/status \
 ✅ *Worked when:* both return 200. `offline → degraded` was rejected, but
 `offline → online → degraded` is fine.
 
-- [ ] Prove idempotency:
+- [x] Prove idempotency:
 
 ```bash
 curl -s -X PATCH http://127.0.0.1:8000/devices/2/status \
@@ -502,7 +529,7 @@ endpoint safe for the harness to retry.
 
 **5. Try pagination.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 curl -s "http://127.0.0.1:8000/devices?limit=2&offset=0"
@@ -535,7 +562,7 @@ tests that depended on it noticed. Fix them deliberately.
 
 **6. Update the two Day 3 list tests in `test_api.py`.**
 
-- [ ] Replace `test_list_devices_returns_all_seeded_devices` and
+- [x] Replace `test_list_devices_returns_all_seeded_devices` and
       `test_list_devices_is_ordered_by_id` with:
 
 ```python
@@ -562,7 +589,7 @@ def test_list_devices_is_ordered_by_id():
 
 **7. Update the status-code expectations test.**
 
-- [ ] In `test_spec_declares_every_status_each_endpoint_can_return`, replace the
+- [x] In `test_spec_declares_every_status_each_endpoint_can_return`, replace the
       `expected` dictionary with:
 
 ```python
@@ -587,13 +614,13 @@ validation. The new PATCH route declares all four of its outcomes.
 
 **8. Create the `scripts` package.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 mkdir -p scripts spec
 ```
 
-- [ ] Create `scripts/__init__.py`:
+- [x] Create `scripts/__init__.py`:
 
 ```python
 """Developer tooling that is not part of the running service."""
@@ -601,7 +628,7 @@ mkdir -p scripts spec
 
 **9. Create `scripts/export_spec.py`.**
 
-- [ ] Create the file:
+- [x] Create the file:
 
 ```python
 """
@@ -667,7 +694,7 @@ if __name__ == "__main__":
 
 **10. Export the spec for the first time.**
 
-- [ ] From the repo root:
+- [x] From the repo root:
 
 ```bash
 python -m scripts.export_spec
@@ -687,7 +714,7 @@ instead and the import fails. Same `-m` idea as `python -m pip` on Day 1.
 
 **11. Create `test_spec_drift.py` in the repo root.**
 
-- [ ] Create the file:
+- [x] Create the file:
 
 ```python
 """
@@ -751,7 +778,7 @@ def test_pinned_contract_matches_the_application():
 
 **12. Run the suite.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 pytest -v
@@ -773,13 +800,13 @@ fire is indistinguishable from one that's comparing nothing.
 
 **13. Change the contract without re-pinning.**
 
-- [ ] In `api/main.py`, temporarily change the version:
+- [x] In `api/main.py`, temporarily change the version:
 
 ```python
     version="0.3.1",
 ```
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 pytest test_spec_drift.py -v
@@ -790,7 +817,7 @@ the failure message tells you exactly what to do about it.
 
 **14. See the change as a diff — this is the whole point.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 python -m scripts.export_spec
@@ -806,7 +833,7 @@ the difference pinning buys.
 
 **15. Put it back.**
 
-- [ ] Restore `version="0.3.0"` in `api/main.py`, then:
+- [x] Restore `version="0.3.0"` in `api/main.py`, then:
 
 ```bash
 python -m scripts.export_spec
@@ -822,7 +849,7 @@ pytest -q
 
 **16. Append to `test_api.py`.**
 
-- [ ] Add to the end of the file:
+- [x] Add to the end of the file:
 
 ```python
 # ---------------------------------------------------------------------------
@@ -951,7 +978,7 @@ def test_spec_declares_pagination_constraints():
 
 **17. Run everything.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 pytest -q
@@ -966,7 +993,7 @@ is unchanged), 2 drift checks, and 13 new ones for today.
 
 **18. Re-pin the contract one last time and confirm it's clean.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 python -m scripts.export_spec
@@ -978,7 +1005,7 @@ green.
 
 **19. Check the container stack.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 docker compose up --build
@@ -989,7 +1016,7 @@ docker compose down
 
 **20. Commit and push.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 git add .
@@ -997,7 +1024,7 @@ git commit -m "Day 5: status state machine, pagination, and a pinned OpenAPI con
 git push
 ```
 
-- [ ] Confirm CI goes green.
+- [x] Confirm CI goes green.
 
 *No CI change was needed today.* The drift check is a pytest test, so the
 existing workflow already runs it. That was the reason for making it a test
@@ -1009,17 +1036,17 @@ rather than a bespoke CI step.
 
 **21. Update this checklist.**
 
-- [ ] Tick the boxes and record anything that differed in the progress log.
+- [x] Tick the boxes and record anything that differed in the progress log.
 
 **22. Review.**
 
-- [ ] Read the Day 5 section of `LEARNING_NOTES.md` and try the flashcards aloud.
+- [x] Read the Day 5 section of `LEARNING_NOTES.md` and try the flashcards aloud.
       The spec-pinning rationale is the single most important thing to be able to
       explain in this whole project — practise it until it's fluent.
 
 **23. Look ahead.**
 
-- [ ] Skim `PROJECT_PLAN.md` Day 6: seeded bug modes, and the **freeze** of the
+- [x] Skim `PROJECT_PLAN.md` Day 6: seeded bug modes, and the **freeze** of the
       service under test. After tomorrow the API stops changing and the harness
       becomes the whole job.
 

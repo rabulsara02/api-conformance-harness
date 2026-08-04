@@ -18,6 +18,7 @@ from fastapi import FastAPI, HTTPException, Query,Response, status
 
 from api import store
 from api.errors import register_error_handlers
+from api.bugs import BugInjectionMiddleware, load_mode_from_env, set_mode
 from api.models import (
     Device,
     DeviceCreate,
@@ -41,6 +42,12 @@ app = FastAPI(
 # Normalise every error response to the declared ErrorResponse shape.
 register_error_handlers(app)
 
+# Seeded bug modes (Day 6). Reading the env var here means an invalid value
+# fails at startup rather than silently running a healthy service -- a typo that
+# quietly produced clean results would make the Day 14 accuracy figure wrong in
+# the most dangerous direction: too good.
+set_mode(load_mode_from_env())
+app.add_middleware(BugInjectionMiddleware)
 
 # Reused response declarations. Every status an endpoint can return must appear
 # in the spec, because the harness's first check (Day 8) is "was this status code

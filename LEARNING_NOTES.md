@@ -1029,5 +1029,131 @@ from one silently comparing nothing.
 
 ---
 
-*Next: Day 6 primer — seeded bug modes, ground truth for measuring a classifier,
-and freezing the service under test.*
+---
+
+## Day 6 — Seeded bugs, ground truth, and the freeze
+
+Full primer in `docs/DAY_06_CHECKLIST.md`. Distilled below.
+
+### Concepts introduced
+
+**Ground truth.** You can only measure a classifier if you already know the right
+answer for every case. That known-answer set is *ground truth*. A service that is
+always correct provides none — hence six deliberate, pre-labelled defects. This
+is exactly what made project 1's "100% fault-classification accuracy" a
+measurement rather than a claim.
+
+**All defects in one injection layer, never in the handlers.** Scattering
+`if BUG_MODE == ...` through route code tangles honest behaviour with fake
+behaviour until nobody can read the service and tell what it's *supposed* to do.
+One middleware file instead gives: readable honest code; an enumerable list of
+defects that *is* the ground-truth table; bugs enabled by configuration rather
+than code change; and a realistic model, since response corruption really does
+happen in middleware and serialization layers. Same separation as project 1's
+`simulator/faults.py`.
+
+**Middleware.** A layer wrapping the whole application — every request passes
+through on the way in, every response on the way out. How logging, auth, CORS,
+compression and timing are normally implemented: anything that applies to *every*
+request rather than one endpoint.
+
+**Rewriting a body invalidates the headers describing it.** Change the body and
+`Content-Length` becomes a lie. Too large, the client hangs waiting for bytes
+that never arrive; too small, the body is truncated. Drop the header and let the
+framework recompute it.
+
+**THE KEY IDEA — not every contract violation is a schema violation.** Four
+seeded bugs break the schema (missing required field, wrong type, illegal enum
+value) and two break the declared status codes. But `off_by_one_page` — returning
+`limit + 1` items — breaks **neither**. The schema says `items` is a list of
+`Device`; it says nothing about how many. The response is valid JSON, fully
+schema-valid, and plainly wrong.
+
+That single mode is why the harness needs **two** mechanisms: automatic schema
+validation (Days 8–9) for structural breakage across every endpoint, and
+hand-written **declarative assertions** (Day 9) about meaning, like
+`len(items) <= limit`. Someone who built only schema validation would miss this
+whole class of bug and — worse — wouldn't know they were missing it.
+
+**Bugs change behaviour, never the contract.** Enabling a bug must leave
+`spec/openapi.json` byte-identical. If the promise moved along with the
+behaviour, there would be nothing to detect. This is why the mode is set by an
+environment variable rather than an HTTP control endpoint: a `POST
+/admin/bug-mode` route would appear in the generated spec, force a re-pin, and
+put a control panel for the bugs into the published interface. Verified by a test
+parametrized over every mode.
+
+**Fail loudly on an unknown mode.** A typo'd `BUG_MODE` raises at startup rather
+than silently running healthy. A silently-ignored typo would run a clean service
+while you believed a bug was active — making the accuracy figure wrong in the
+most dangerous direction: **too good**.
+
+**One violation per mode, one endpoint per mode.** Non-overlapping blast radii
+mean every failure has exactly one correct explanation. Overlapping defects would
+make the accuracy figure ambiguous.
+
+**Test-order dependence, again.** The bug-mode fixture resets on both sides of
+its `yield`, so a test that fails partway through still can't poison its
+neighbours. A leaked mode would be a flakiness bug inside the tool built to
+detect flakiness.
+
+**The freeze.** The service under test is scaffolding, not the product. From Day
+7 it changes only to fix a bug mode. Project 1 froze its simulator on the same
+day for the same reason: every hour spent improving the thing being tested is an
+hour stolen from the thing doing the testing, which is what actually demonstrates
+the skill.
+
+### Day 6 flashcards
+
+1. **Why does a correct service need the ability to misbehave?** — Because
+   classifier accuracy can only be measured against known right answers. No
+   ground truth, no number.
+2. **What is ground truth?** — The set of cases where the correct label is known
+   in advance, used to score a classifier's predictions.
+3. **Why put the seeded bugs in a middleware instead of the handlers?** — Keeps
+   the honest code readable, makes every defect enumerable in one place, turns
+   enabling a bug into configuration, and matches where corruption really occurs.
+4. **What is middleware?** — A layer wrapping the whole app that sees every
+   request in and every response out; used for cross-cutting concerns.
+5. **Why remove `Content-Length` after rewriting a response body?** — It
+   described the original body. A stale value makes clients hang or truncate.
+6. **Give an example of a contract violation a schema validator cannot catch.** —
+   Returning more items than `limit`. The schema constrains the shape of `items`,
+   not its length, so the response is schema-valid and still wrong.
+7. **What follows from that?** — Schema validation alone is insufficient; the
+   harness also needs declarative assertions about semantics.
+8. **Why must enabling a bug leave the contract unchanged?** — If the spec moved
+   with the behaviour, the violation would be undetectable. The promise has to
+   stay fixed while behaviour deviates from it.
+9. **Why not a `/admin/bug-mode` endpoint?** — It would appear in the generated
+   spec, force a re-pin, and put a control panel for the service's own bugs into
+   its published interface.
+10. **Why fail loudly on an unknown `BUG_MODE`?** — A silent default to healthy
+    would produce clean results while a bug was believed active, inflating the
+    accuracy figure — wrong in the most dangerous direction.
+11. **Why does each mode target exactly one endpoint?** — So every failure has
+    exactly one correct explanation. Overlapping defects make accuracy ambiguous.
+
+### Day 6 design decisions to defend
+
+- **Single injection layer rather than scattered conditionals.** Readability of
+  the honest code, and an enumerable defect list that doubles as ground truth.
+- **`off_by_one_page` included deliberately**, even though no schema check can
+  catch it — it forces the declarative-assertion mechanism to exist and proves
+  the limits of schema validation.
+- **Environment variable, no HTTP control surface.** Keeps the contract clean and
+  the bug switch out of the published interface.
+- **Unknown mode raises at startup.** Prefers a loud failure to a quietly
+  inflated metric.
+- **Non-overlapping targets, one violation per mode.** Preserves an unambiguous
+  right answer per failure.
+- **Fixture resets bug mode on both sides of `yield`.** A failing test cannot
+  leak state into its neighbours.
+- **Froze the service under test on schedule.** The harness is the product;
+  further API features would be scope creep dressed up as progress.
+
+---
+
+*Next: Day 7 primer — dependency inversion for HTTP, the `Transport` interface,
+pytest fixtures at session scope, and the first request driven against the pinned
+contract. Phase 2 begins: the harness itself.*
