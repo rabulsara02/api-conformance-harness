@@ -1,0 +1,99 @@
+# Read-only cases. Safe to run in any order and safe to retry.
+
+- name: list_devices_returns_a_page
+  method: GET
+  path: /devices
+  expect_status: 200
+  expect:
+    - path: limit
+      equals: 50
+    - path: offset
+      equals: 0
+    - path: items
+      type: array
+
+- name: list_devices_respects_limit
+  description: >
+    Catches the off_by_one_page seeded bug. Note this is the ONLY mechanism that
+    can: returning limit+1 items satisfies the schema completely, because the
+    schema constrains the shape of `items` and says nothing about its length.
+  method: GET
+  path: /devices
+  params: {limit: 2, offset: 0}
+  expect_status: 200
+  expect:
+    - path: items
+      max_length: 2
+    - path: limit
+      equals: 2
+
+- name: list_devices_second_page
+  method: GET
+  path: /devices
+  params: {limit: 2, offset: 2}
+  expect_status: 200
+  expect:
+    - path: items
+      max_length: 2
+
+- name: list_devices_rejects_limit_below_minimum
+  method: GET
+  path: /devices
+  params: {limit: 0}
+  expect_status: 422
+  expect:
+    - path: error.code
+      equals: validation_error
+
+- name: list_devices_rejects_limit_above_maximum
+  method: GET
+  path: /devices
+  params: {limit: 101}
+  expect_status: 422
+
+- name: get_device_returns_one_device
+  method: GET
+  path: /devices/1
+  expect_status: 200
+  expect:
+    - path: id
+      equals: 1
+    - path: status
+      one_of: [online, offline, degraded]
+
+- name: get_missing_device_returns_404
+  method: GET
+  path: /devices/99999
+  expect_status: 404
+  expect:
+    - path: error.code
+      equals: not_found
+
+- name: get_device_with_non_integer_id_returns_422
+  method: GET
+  path: /devices/banana
+  expect_status: 422
+  expect:
+    - path: error.code
+      equals: validation_error
+
+- name: search_by_name_substring
+  method: GET
+  path: /devices/search
+  params: {name_contains: router}
+  expect_status: 200
+  expect:
+    - path: ""
+      type: array
+
+- name: search_by_status
+  method: GET
+  path: /devices/search
+  params: {status: degraded}
+  expect_status: 200
+
+- name: search_with_invalid_status_returns_422
+  method: GET
+  path: /devices/search
+  params: {status: banana}
+  expect_status: 422

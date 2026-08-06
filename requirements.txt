@@ -10,3 +10,7 @@ uvicorn==0.52.1
 
 # HTTP client (used by fastapi.testclient today, by the harness from Day 7)
 httpx==0.28.1
+
+# Contract validation + declarative test plans
+jsonschema==4.26.0
+PyYAML==6.0.3

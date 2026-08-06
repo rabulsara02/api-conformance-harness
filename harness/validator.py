@@ -20,8 +20,9 @@ Day 9: validating the body against the resolved schema.
 
 import re
 from typing import Any
+from jsonschema import Draft202012Validator
 
-from harness.transport import HttpResponse
+from harness.transport import HttpResponse, NotJsonError
 from harness.violations import Violation, ViolationKind
 
 # A path parameter stands for exactly one segment, so it must not match a "/".
@@ -339,5 +340,92 @@ def check_response(
                     location="response.headers.content-type",
                 )
             )
+
+    return violations
+
+
+# ---------------------------------------------------------------------------
+# Body validation (Day 9)
+# ---------------------------------------------------------------------------
+
+# jsonschema names the failing keyword in error.validator. Mapping those onto
+# our own kinds keeps the library out of every layer above -- the same
+# dependency-inversion argument as returning our own HttpResponse rather than
+# httpx's. Leak the library's error type and the classifier, the reports and the
+# flake detector all end up depending on jsonschema.
+_KIND_BY_JSONSCHEMA_VALIDATOR = {
+    "required": ViolationKind.SCHEMA_MISSING_FIELD,
+    "type": ViolationKind.SCHEMA_WRONG_TYPE,
+    "enum": ViolationKind.SCHEMA_ENUM,
+    "additionalProperties": ViolationKind.SCHEMA_UNEXPECTED_FIELD,
+}
+
+
+def _location_of(error: Any) -> str:
+    """
+    Turn jsonschema's path into a readable location.
+
+    absolute_path is a deque like ["items", 0, "status"], which becomes
+    "response.body.items.0.status". That is the difference between "the response
+    is invalid" and "item 0's status is wrong" -- accuracy versus actionability.
+    """
+    parts = ["response", "body"] + [str(part) for part in error.absolute_path]
+    return ".".join(parts)
+
+
+def check_body_against_schema(body: Any, schema: dict[str, Any]) -> list[Violation]:
+    """
+    Validate a parsed body against a RESOLVED schema.
+
+    Draft202012Validator specifically, not the library default. Our contract is
+    OpenAPI 3.1, which aligns with JSON Schema draft 2020-12. Point this at an
+    older draft and constraints are SILENTLY IGNORED -- no error, no warning,
+    just a validator that passes everything. That is the worst possible bug in a
+    test tool: it does not fail, it stops finding things, and you conclude the
+    service is fine.
+
+    The schema must already be $ref-resolved (Day 8). jsonschema can follow refs
+    itself, but only with a registry telling it where to look; because
+    resolve_schema() inlined everything, the schema is self-contained and this
+    call needs no extra machinery. Yesterday's work is what makes today a
+    one-liner.
+
+    Errors are sorted by position so the report reads top-to-bottom through the
+    body rather than in whatever order the library happened to find them --
+    unstable ordering makes diffs between runs unreadable.
+    """
+    validator = Draft202012Validator(schema)
+    violations: list[Violation] = []
+
+    for error in sorted(validator.iter_errors(body), key=lambda e: list(e.absolute_path)):
+        kind = _KIND_BY_JSONSCHEMA_VALIDATOR.get(
+            error.validator, ViolationKind.SCHEMA_INVALID
+        )
+
+        expected = ""
+        actual = ""
+        if kind is ViolationKind.SCHEMA_WRONG_TYPE:
+            expected = str(error.validator_value)
+            actual = type(error.instance).__name__
+        elif kind is ViolationKind.SCHEMA_ENUM:
+            expected = ", ".join(str(value) for value in error.validator_value)
+            actual = repr(error.instance)
+        elif kind is ViolationKind.SCHEMA_MISSING_FIELD:
+            expected = str(error.validator_value)
+            actual = (
+                ", ".join(sorted(error.instance))
+                if isinstance(error.instance, dict)
+                else ""
+            )
+
+        violations.append(
+            Violation(
+                kind=kind,
+                message=error.message,
+                expected=expected,
+                actual=actual,
+                location=_location_of(error),
+            )
+        )
 
     return violations

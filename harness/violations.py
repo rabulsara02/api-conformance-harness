@@ -41,6 +41,17 @@ class ViolationKind(str, Enum):
     UNEXPECTED_BODY = "unexpected_body"
     # A $ref in the contract points at something that isn't there.
     UNRESOLVABLE_REF = "unresolvable_ref"
+    
+    # --- body-schema breaches (Day 9) ---
+    SCHEMA_MISSING_FIELD = "schema_missing_field"
+    SCHEMA_WRONG_TYPE = "schema_wrong_type"
+    SCHEMA_ENUM = "schema_enum"
+    SCHEMA_UNEXPECTED_FIELD = "schema_unexpected_field"
+    SCHEMA_INVALID = "schema_invalid"
+    BODY_NOT_JSON = "body_not_json"
+
+    # --- declarative expectations from a test plan (Day 9) ---
+    EXPECTATION_FAILED = "expectation_failed"
 
 
 @dataclass(frozen=True)

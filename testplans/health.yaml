@@ -1,0 +1,9 @@
+# Liveness. Trivial on purpose -- if this fails, nothing else is worth reading.
+- name: health_returns_ok
+  method: GET
+  path: /health
+  expect_status: 200
+  retries: 2
+  expect:
+    - path: status
+      equals: ok

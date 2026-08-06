@@ -19,3 +19,6 @@ reports/
 
 # OS noise
 .DS_Store
+
+# Local-only notes (resume material, scratch). Never committed.
+*.local.md

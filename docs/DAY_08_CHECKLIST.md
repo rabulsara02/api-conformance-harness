@@ -15,13 +15,46 @@ resolution. Body-against-schema validation is tomorrow.
 
 ---
 
+
+
 ## Progress log (updated as we go)
 
-**Status: not started.**
+**Status: ✅ DAY 8 COMPLETE.** Pushed, CI green.
+
+**Done-when gate met:** 109 tests passing; fabricated bad responses produce the
+correct `Violation`, conformant ones produce none; the validator reported a real
+`undeclared_status` against a live service running `BUG_MODE=undeclared_500`.
+
+**Seeded-bug coverage so far — 2 of 6.** Worth tracking explicitly, because
+knowing what the tool cannot yet catch is more useful than assuming it catches
+everything:
+
+
+| Bug mode          | Caught today? | Needs                                                        |
+| ----------------- | ------------- | ------------------------------------------------------------ |
+| `wrong_status`    | ✅             | status-declaration check                                     |
+| `undeclared_500`  | ✅             | status-declaration check                                     |
+| `missing_field`   | ❌             | body schema validation (Day 9)                               |
+| `wrong_type`      | ❌             | body schema validation (Day 9)                               |
+| `bad_enum`        | ❌             | body schema validation (Day 9)                               |
+| `off_by_one_page` | ❌             | declarative assertion (Day 9) — schema-valid by construction |
+
+
+Verified by hand: with `BUG_MODE=missing_field` the validator reports **no
+violation**, which is correct for today rather than a bug in it.
+
+**The oracle now exists.** `spec/openapi.json` is no longer just a pinned file —
+it is the thing that decides pass or fail, for every endpoint, from one
+implementation. That is the shift from example-based assertions to conformance
+testing.
 
 ---
 
+
+
 ## Read this first — Background primer
+
+
 
 ### 1. Where this fits
 
@@ -41,6 +74,8 @@ flowchart LR
     VIO -.->|Day 15| RPT["reports"]
 ```
 
+
+
 Recall Day 1's vocabulary: the **oracle** is whatever decides pass or fail. In
 `test_add` the oracle was a hard-coded `== 2`. Today the oracle becomes **the
 pinned contract** — and that's the leap from example-based assertions to
@@ -49,19 +84,23 @@ from a document rather than from hand-written expectations.
 
 ---
 
+
+
 ### 2. Violations are structured, not booleans
 
 The natural instinct is a function returning `True`/`False`, or maybe a string.
 Both throw away information you will need later:
 
-| Consumer | Needs |
-|---|---|
-| **Classifier** (Day 14) | To branch on *what kind* of violation it was |
-| **HTML report** (Day 15) | `expected` vs `actual`, side by side |
-| **The human reading it** | A sentence explaining what went wrong |
+
+| Consumer                    | Needs                                                                  |
+| --------------------------- | ---------------------------------------------------------------------- |
+| **Classifier** (Day 14)     | To branch on *what kind* of violation it was                           |
+| **HTML report** (Day 15)    | `expected` vs `actual`, side by side                                   |
+| **The human reading it**    | A sentence explaining what went wrong                                  |
 | **Flake detector** (Day 13) | A stable identity, to tell "same failure again" from "a different one" |
 
-So `check_response` returns a **list of `Violation` objects**, each carrying a
+
+So `check_response` returns a **list of** `Violation` **objects**, each carrying a
 `kind` (an enum the classifier can match on), a `location` (where in the
 response), `expected`, `actual`, and a human `message`.
 
@@ -74,6 +113,8 @@ bool would force every later stage to re-derive information the validator alread
 knew and threw away.
 
 ---
+
+
 
 ### 3. The two checks you build today
 
@@ -99,7 +140,7 @@ The contract says each response is `application/json`. If a service returns HTML
 it's one of the most common real-world ones. Content-type checking is what turns
 "the JSON didn't parse" from a crash into a diagnosis.
 
-There's a subtle case: **204 declares no `content` key at all.** Look at your own
+There's a subtle case: **204 declares no** `content` **key at all.** Look at your own
 spec:
 
 ```json
@@ -112,6 +153,8 @@ Your service does this correctly; the validator now enforces it rather than
 trusting it.
 
 ---
+
+
 
 ### 4. `$ref` — and why resolution has to be recursive
 
@@ -139,7 +182,7 @@ every `$ref` it finds, at any depth.
 
 **Two details that separate a working resolver from a naive one:**
 
-**A. Siblings alongside `$ref` must be preserved.** In OpenAPI 3.1, `$ref` can
+**A. Siblings alongside** `$ref` **must be preserved.** In OpenAPI 3.1, `$ref` can
 have neighbours — see the `description` above. A resolver that replaces the whole
 object with the target silently deletes them. Ours merges: resolve the target,
 then lay the local keys on top, so local values win.
@@ -155,6 +198,8 @@ hangs on a valid document is broken, and you'd rather not discover that while
 pointing it at somebody else's API.
 
 ---
+
+
 
 ### 5. Path templates: matching `/devices/1` to `/devices/{device_id}`
 
@@ -185,6 +230,8 @@ scores 1.
 
 ---
 
+
+
 ### 6. Why unit tests with fabricated responses
 
 Today's tests build `HttpResponse` objects by hand rather than making HTTP calls.
@@ -192,10 +239,10 @@ That's deliberate:
 
 - **Fast and deterministic** — no server, no sockets, no timing.
 - **You can fabricate the impossible.** To test the content-type check you need a
-  response claiming `text/html`. Your service will never send one. Constructing
-  it by hand takes a line.
+response claiming `text/html`. Your service will never send one. Constructing
+it by hand takes a line.
 - **It isolates the unit.** If a test fails, the validator is wrong — not the
-  network, not the service, not the fixture.
+network, not the service, not the fixture.
 
 The integration tests (validator + live service + seeded bugs) arrive tomorrow,
 once the validator is complete. Both layers, each answering what it's good at —
@@ -203,11 +250,13 @@ the same split as `TestClient` vs the harness.
 
 ---
 
+
+
 ## Part A — The violation type
 
-**1. Create `harness/violations.py`.**
+**1. Create** `harness/violations.py`**.**
 
-- [ ] Create the file:
+- [x] Create the file:
 
 ```python
 """
@@ -287,11 +336,13 @@ class Violation:
 
 ---
 
+
+
 ## Part B — The validator
 
-**2. Create `harness/validator.py`.**
+**2. Create** `harness/validator.py`**.**
 
-- [ ] Create the file:
+- [x] Create the file:
 
 ```python
 """
@@ -639,13 +690,17 @@ def check_response(
     return violations
 ```
 
+
+
 ---
+
+
 
 ## Part C — Tests
 
-**3. Create `test_validator.py` in the repo root.**
+**3. Create** `test_validator.py` **in the repo root.**
 
-- [ ] Create the file:
+- [x] Create the file:
 
 ```python
 """
@@ -988,9 +1043,11 @@ def test_violation_renders_readably(contract: dict):
     assert "response.status" in text
 ```
 
+
+
 **4. Run the suite.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 pytest -q
@@ -1000,6 +1057,8 @@ pytest -q
 
 ---
 
+
+
 ## Part D — See it work against real seeded bugs
 
 The unit tests use fabricated responses. Before trusting the validator, point it
@@ -1007,7 +1066,7 @@ at the actual service with a bug switched on.
 
 **5. Start the service with a seeded bug.**
 
-- [ ] In one terminal:
+- [x] In one terminal:
 
 ```bash
 BUG_MODE=undeclared_500 uvicorn api.main:app --port 9002
@@ -1015,7 +1074,7 @@ BUG_MODE=undeclared_500 uvicorn api.main:app --port 9002
 
 **6. Run the validator against it by hand.**
 
-- [ ] In another terminal:
+- [x] In another terminal:
 
 ```bash
 python -c "
@@ -1043,22 +1102,24 @@ with build_transport(config) as t:
 real response, judged against a document, with a specific explanation of what
 broke. Everything from here makes it broader and sharper.
 
-- [ ] Try `BUG_MODE=missing_field` on the same port.
+- [x] Try `BUG_MODE=missing_field` on the same port.
 
 ✅ *Worked when:* it reports **no violation** — and that is correct for today.
 `missing_field` breaks the *body schema*, and body validation is tomorrow's work.
 Knowing exactly which bugs your tool cannot yet catch is worth more than assuming
 it catches everything.
 
-- [ ] Stop the server.
+- [x] Stop the server.
 
 ---
+
+
 
 ## Part E — Commit
 
 **7. Commit and push.**
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 git status --short
@@ -1067,48 +1128,60 @@ git commit -m "Day 8: contract validator - status, content-type, path matching, 
 git push
 ```
 
-- [ ] Confirm CI goes green.
+- [x] Confirm CI goes green.
 
 ---
+
+
 
 ## Part F — Wrap up
 
 **8. Update this checklist.**
 
-- [ ] Tick the boxes and record anything that differed in the progress log,
-      including which seeded bugs the validator catches so far (2 of 6) and which
-      it does not yet.
+- [x] Tick the boxes and record anything that differed in the progress log,
+  ```
+  including which seeded bugs the validator catches so far (2 of 6) and which
+  it does not yet.
+  ```
 
 **9. Review.**
 
-- [ ] Read the Day 8 section of `LEARNING_NOTES.md` and try the flashcards aloud.
-      The one to be fluent on is *why `$ref` resolution has to be recursive* —
-      it's concrete, you can point at your own spec to explain it, and it shows
-      you understand the document format rather than just using a library.
+- [x] Read the Day 8 section of `LEARNING_NOTES.md` and try the flashcards aloud.
+  ```
+  The one to be fluent on is *why `$ref` resolution has to be recursive* —
+  it's concrete, you can point at your own spec to explain it, and it shows
+  you understand the document format rather than just using a library.
+  ```
 
 **10. Look ahead.**
 
-- [ ] Skim `PROJECT_PLAN.md` Day 9. Tomorrow: body validation against the
-      resolved schema with `jsonschema`, YAML test plans, and the JSON run
-      summary. That's when the remaining four seeded bugs become catchable.
+- [x] Skim `PROJECT_PLAN.md` Day 9. Tomorrow: body validation against the
+  ```
+  resolved schema with `jsonschema`, YAML test plans, and the JSON run
+  summary. That's when the remaining four seeded bugs become catchable.
+  ```
 
 ---
+
+
 
 ## If something breaks
 
-| Symptom | Cause and fix |
-|---|---|
-| `fixture 'contract' not found` | The `contract` fixture lives in `conftest.py` from Day 7. Check it's still there. |
-| `test_resolve_schema_inlines_a_nested_enum` fails | The resolver isn't recursing into `properties`. The final `return` must rebuild the dict by resolving every value. |
-| `test_resolve_schema_preserves_keys_beside_a_ref` fails | Siblings are being dropped. Merge `{**target, **siblings}` — local keys last so they win. |
-| `test_match_path_template_prefers_the_specific_template` fails | `max(..., key=_specificity)` is missing, or `_specificity` is counting parameters as literals. |
-| `test_match_path_template_does_not_span_segments` fails | The regex uses `.+` instead of `[^/]+`. |
-| Path matching never matches anything | `re.escape` escapes `{` and `}`, so the substitution must target the **escaped** form `\{...\}`. |
-| A test hangs | Cycle guard isn't working. `_stack` must be passed down on every recursive call. |
-| `UNKNOWN_OPERATION` on a valid path | The method case is wrong — OpenAPI stores methods lowercase; `find_operation` lowercases for you, so check the response's `request_method` is set. |
+
+| Symptom                                                        | Cause and fix                                                                                                                                      |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fixture 'contract' not found`                                 | The `contract` fixture lives in `conftest.py` from Day 7. Check it's still there.                                                                  |
+| `test_resolve_schema_inlines_a_nested_enum` fails              | The resolver isn't recursing into `properties`. The final `return` must rebuild the dict by resolving every value.                                 |
+| `test_resolve_schema_preserves_keys_beside_a_ref` fails        | Siblings are being dropped. Merge `{**target, **siblings}` — local keys last so they win.                                                          |
+| `test_match_path_template_prefers_the_specific_template` fails | `max(..., key=_specificity)` is missing, or `_specificity` is counting parameters as literals.                                                     |
+| `test_match_path_template_does_not_span_segments` fails        | The regex uses `.+` instead of `[^/]+`.                                                                                                            |
+| Path matching never matches anything                           | `re.escape` escapes `{` and `}`, so the substitution must target the **escaped** form `\{...\}`.                                                   |
+| A test hangs                                                   | Cycle guard isn't working. `_stack` must be passed down on every recursive call.                                                                   |
+| `UNKNOWN_OPERATION` on a valid path                            | The method case is wrong — OpenAPI stores methods lowercase; `find_operation` lowercases for you, so check the response's `request_method` is set. |
+
 
 ---
 
-*When 109 tests pass and the validator reports a real `undeclared_status`
-violation against a live service running `BUG_MODE=undeclared_500`, Day 8 is
+*When 109 tests pass and the validator reports a real* `undeclared_status`
+*violation against a live service running* `BUG_MODE=undeclared_500`*, Day 8 is
 done. The contract is now an oracle. Tomorrow it learns to read bodies.*

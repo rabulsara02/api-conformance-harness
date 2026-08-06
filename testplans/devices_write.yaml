@@ -1,0 +1,82 @@
+# Write cases. Note which ones carry `retries` and which deliberately do not:
+# POST is not idempotent, so retrying it could create duplicate devices. The
+# runner enforces this regardless, but declaring it here keeps the intent visible
+# to anyone reading the plan.
+
+- name: create_device_returns_201
+  method: POST
+  path: /devices
+  body: {name: plan-created-01, status: offline}
+  expect_status: 201
+  expect:
+    - path: name
+      equals: plan-created-01
+    - path: status
+      equals: offline
+
+- name: create_device_defaults_status_to_offline
+  method: POST
+  path: /devices
+  body: {name: plan-created-02}
+  expect_status: 201
+  expect:
+    - path: status
+      equals: offline
+
+- name: create_duplicate_name_returns_409
+  method: POST
+  path: /devices
+  body: {name: edge-router-01}
+  expect_status: 409
+  expect:
+    - path: error.code
+      equals: conflict
+
+- name: create_device_with_empty_name_returns_422
+  method: POST
+  path: /devices
+  body: {name: ""}
+  expect_status: 422
+
+- name: replace_device_returns_200
+  method: PUT
+  path: /devices/3
+  body: {name: plan-replaced, status: offline}
+  expect_status: 200
+  retries: 2
+  expect:
+    - path: name
+      equals: plan-replaced
+
+- name: replace_missing_device_returns_404
+  method: PUT
+  path: /devices/99999
+  body: {name: ghost, status: offline}
+  expect_status: 404
+
+- name: patch_status_illegal_transition_returns_409
+  method: PATCH
+  path: /devices/2/status
+  body: {status: degraded}
+  expect_status: 409
+  expect:
+    - path: error.code
+      equals: conflict
+
+- name: patch_status_unknown_value_returns_422
+  method: PATCH
+  path: /devices/1/status
+  body: {status: banana}
+  expect_status: 422
+
+- name: patch_status_on_missing_device_returns_404
+  method: PATCH
+  path: /devices/99999/status
+  body: {status: online}
+  expect_status: 404
+
+- name: delete_missing_device_returns_404
+  method: DELETE
+  path: /devices/99999
+  expect_status: 404
+  retries: 2

@@ -1432,5 +1432,161 @@ schema-valid by construction.
 
 ---
 
-*Next: Day 9 primer — JSON Schema validation of bodies, declarative YAML test
-plans, and the run summary. The remaining four seeded bugs become catchable.*
+---
+
+## Day 9 — Bodies, tests-as-data, and state
+
+Full primer in `docs/DAY_09_CHECKLIST.md`. Distilled below.
+
+### Concepts introduced
+
+**Two checking mechanisms, neither subsuming the other.** Schema validation is
+automatic and general — one implementation covers every endpoint. Declarative
+expectations are hand-written and specific. `off_by_one_page` is caught *only* by
+the second (returning `limit + 1` items is fully schema-valid); `missing_field`
+is caught *only* by the first, with no assertion aimed at it. Proven by the bug
+sweep.
+
+**JSON Schema draft matters, silently.** OpenAPI 3.1 aligns with draft 2020-12,
+so the validator must be `Draft202012Validator`. Point it at an older draft and
+constraints are ignored with **no error and no warning** — the validator simply
+passes everything. That is the worst possible bug in a test tool: it doesn't
+fail, it stops finding things, and you conclude the service is fine.
+
+**Day 8's `$ref` resolution was the prerequisite.** `jsonschema` can follow refs
+itself, but only with a registry. Because the schema is already inlined, the call
+needs no extra machinery.
+
+**Don't leak the library's error type.** `jsonschema.ValidationError` is shaped
+for the library's purposes; passing it through would make the classifier, the
+reports and the flake detector all depend on `jsonschema` — the same
+dependency-inversion mistake as returning httpx responses from `Transport`. Map
+`error.validator` onto our own kinds, and turn `error.absolute_path` into
+`response.body.items.0.status` — the difference between "the response is invalid"
+and "item 0's status is wrong".
+
+**Tests as data.** Cases live in YAML; one runner executes all of them. Adding a
+case is six lines, the suite reads as a list, non-programmers can contribute,
+cases can be generated — and, most importantly, a *different* runner can execute
+the same files without touching them. Day 12's repeat-runner and Day 15's reports
+both depend on that.
+
+**One pytest test per case** via `parametrize`, so a failure names
+`get_missing_device_returns_404` rather than "the plan failed".
+
+**A restricted assertion vocabulary, deliberately.** Five predicates against a
+dotted path. Embedding Python expressions would be more expressive and would
+destroy the property that makes plans valuable: **the moment a plan can execute
+code, it stops being data** — no longer safely reviewable, generatable, or
+runnable by someone who hasn't read every line. Same instinct as `yaml.safe_load`
+over `yaml.load`. If five predicates are ever insufficient, add a sixth
+deliberately rather than opening the door to arbitrary code.
+
+**Unknown keys are an error, not a warning.** A typo'd `expect_stauts` silently
+ignored leaves a case that passes while checking nothing — confidence it hasn't
+earned, wrong in the dangerous direction.
+
+**Retry policy — two rules, both inherited.** (1) Retry only on *transport*
+failure, never on a validation failure: a response that violates the contract
+will violate it again, and retrying hides a real bug behind a green result. (2)
+Retry only *idempotent* methods (Day 4) — retrying a POST may create two devices,
+and **a test tool that corrupts the system under test is worse than no test
+tool.** `PATCH` is on the safe list only because of Day 5's decision to allow
+no-op transitions; had illegal no-ops returned 409, a retried PATCH would fail
+*because the first attempt succeeded*.
+
+**The run summary contains its own configuration.** A result you can't reproduce
+is an anecdote, and a report that doesn't say what it ran against can't be
+reproduced. This is why Day 7 put every knob in one `HarnessConfig`:
+configuration scattered through the code cannot be reported. Day 15 renders the
+same structure as JUnit and HTML — one summary, many reports.
+
+**The healthy baseline must be exactly 100%.** A suite carrying permanent known
+failures is a suite nobody reads: every new failure gets checked against a list
+of expected ones until someone stops checking. It would also pollute the Day 13
+flake detector's ground truth, since always-failing and intermittently-failing
+are different things.
+
+**A case that contradicts the spec is a TEST bug.** An early plan case requested
+`/no-such-path`; the service answered correctly but the validator reported
+`unknown_operation`, because the contract declares no such path. The validator
+was right and the case was wrong. Removed for now — and reintroduced
+deliberately on Day 14 as seeded ground truth for the `test_bug` category.
+
+**STATE — the finding of the day.** Once plans create and delete devices against
+a session-scoped server, the suite acquires **test-order dependence**: the
+baseline test passed alone and failed in the full run, because earlier
+parametrized cases had already created `plan-created-01` and the create case then
+got a 409. Passes alone, fails in the suite — cause #2 on the Day 0 list,
+occurring in our own harness. Day 7 predicted it in as many words.
+
+Fixed with an autouse fixture resetting the service store before each test. **The
+honest limitation:** that only works because the local server shares a process
+with pytest. You cannot reset someone else's deployment from a test runner, so
+against an external `HARNESS_BASE_URL` the fixture skips and the plans must be
+self-sufficient instead. **State management is the hard part of integration
+testing** — not the requests, not the assertions, but deciding what the world
+looks like before each case.
+
+**Run the suite twice.** A suite that passes once and fails on the second run has
+left state behind. Worth doing every time a write case is added.
+
+### Day 9 flashcards
+
+1. **Why does the harness need two checking mechanisms?** — Schema validation
+   can't see semantic violations. `off_by_one_page` returns the right fields with
+   the right types and the wrong number of them.
+2. **What happens if you use the wrong JSON Schema draft?** — Constraints are
+   silently ignored. The validator passes everything and reports success.
+3. **Why map jsonschema's errors onto your own type?** — Otherwise every
+   downstream stage depends on jsonschema; same mistake as leaking httpx
+   responses.
+4. **What does tests-as-data buy you?** — Cheap authoring and review,
+   non-programmer contribution, mechanical generation, and the ability to run the
+   same cases with a different runner (Days 12 and 15).
+5. **Why not allow Python expressions in a plan?** — Executable plans stop being
+   data: unreviewable, ungeneratable, and a way to run arbitrary code in the test
+   runner.
+6. **Why reject unknown keys in a plan?** — A typo would leave a case that passes
+   while checking nothing.
+7. **When may the harness retry?** — Only on transport failure, and only for
+   idempotent methods. Never on a validation failure.
+8. **Why never retry a POST?** — It isn't idempotent; a retry after a timeout can
+   create a duplicate. A test tool must not corrupt the system under test.
+9. **Why does the run summary include the config?** — So any run can be
+   reproduced from its own report.
+10. **Why must the healthy baseline be exactly 100%?** — Permanent known failures
+    train people to ignore failures, and they pollute the flake detector's ground
+    truth.
+11. **What is test-order dependence and how did it appear here?** — A test's
+    result depending on what ran before it. Write cases left a device behind, so
+    the baseline test passed alone and failed in the suite.
+12. **Why can't the reset fixture work against a deployed service?** — It reaches
+    into the store directly, which is only possible in-process. Remotely, the
+    plans must tolerate or clean up state themselves.
+
+### Day 9 design decisions to defend
+
+- **Used `jsonschema` for the innermost check, hand-wrote everything around it.**
+  Don't reimplement a standard; do own the logic that makes it a harness.
+- **Restricted assertion vocabulary over embedded expressions.** Keeps plans
+  inert, reviewable and generatable.
+- **`yaml.safe_load`, never `yaml.load`.** The unsafe loader can construct
+  arbitrary Python objects from a document.
+- **Duplicate case names rejected.** Names are the identity used by pytest, the
+  summary, and Day 12's per-test history; two cases sharing one would merge their
+  histories and make both flakiness scores meaningless.
+- **Retries gated on idempotency in the runner, not left to the plan author.**
+  Declaring `retries` on a POST case cannot make it unsafe.
+- **Violations sorted by position; summary written with `sort_keys`.** Unstable
+  ordering makes diffs between runs unreadable — the same reason the spec export
+  is deterministic.
+- **Named the remote-reset limitation instead of hiding it.** A fixture that
+  quietly only works locally is how a suite ends up green on a laptop and red in
+  CI.
+
+---
+
+*Next: Day 10 primer — property-based testing and schemathesis. The validator
+checks the responses you asked for; the fuzzer invents the requests you didn't
+think to make.*
