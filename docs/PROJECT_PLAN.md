@@ -75,6 +75,15 @@ Carried forward from project 1, plus three new ones.
    - **Doc convention — code blocks:** every code block in every checklist starts
      at the left margin — never nested inside a list item — so it copy-pastes
      cleanly with no leading whitespace. Checkbox lines sit *above* the block.
+   - **Resume material — update when a CLAIM changes, not on a schedule.**
+     `RESUME_BULLETS.local.md` (local-only, gitignored) is refreshed whenever the
+     project can support a statement it couldn't before — not every day, and not
+     only at the end. Daily is churn; end-only loses the specific evidence and
+     leaves you reconstructing "it found some issues" instead of the actual
+     findings. Trigger points: **Day 10** (property-based testing findings),
+     **Day 13** (flake-detection precision/recall), **Day 14** (classification
+     accuracy), **Day 17** (frozen metrics). Never add a bullet for work not yet
+     built.
    - **Doc convention — diagrams:** all diagrams use ```mermaid fenced blocks,
      never ASCII art. GitHub renders Mermaid natively in markdown (no plugin, no
      build step), so diagrams stay readable in the repo and legible to anyone
