@@ -44,3 +44,20 @@ All defects live in a single middleware (`api/bugs.py`); the route handlers and
 store remain honest. Enabling a bug changes the service's **behaviour** and never
 its **contract** — `spec/openapi.json` is byte-identical under every mode, which
 is what makes the violations detectable.
+
+
+## Property-based testing
+
+The declarative suite tests requests we chose. `schemathesis` generates requests
+from the contract itself, finding inputs nobody thought to write:
+
+```bash
+st run spec/openapi.json --url http://127.0.0.1:8000 --seed 1234 \
+  -c not_a_server_error -c status_code_conformance \
+  -c content_type_conformance -c response_schema_conformance
+```
+
+Its first run against a healthy service found **9 failures**, two of which were
+genuine defects in the contract — an undocumented `400` on malformed bodies, and
+an optional query parameter incorrectly declared nullable. Both are fixed; see
+[`docs/FUZZ_FINDINGS.md`](docs/FUZZ_FINDINGS.md) for the full triage.

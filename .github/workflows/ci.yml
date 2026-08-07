@@ -4,7 +4,16 @@
 name: CI
 
 # WHEN this runs.
-on: [push, pull_request]
+#
+# workflow_dispatch adds a manual "Run workflow" button in the Actions tab.
+# Added after a GitHub Actions incident (2026-08-06) throttled webhook delivery:
+# pushes stopped triggering runs, and with only push/pull_request triggers there
+# was no way to start one by hand. A manual trigger is the escape hatch for any
+# situation where the event that normally starts CI does not arrive.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   test:

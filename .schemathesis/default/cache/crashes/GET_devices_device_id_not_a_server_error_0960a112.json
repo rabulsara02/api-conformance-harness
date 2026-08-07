@@ -1,0 +1,91 @@
+{
+  "operation": "GET /devices/{device_id}",
+  "method": "GET",
+  "path_template": "/devices/{device_id}",
+  "fingerprint": "0960a112",
+  "case_id": "rcbmDf",
+  "code_sample": "curl -X GET http://127.0.0.1:9003/devices/5",
+  "sequence": [
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:9003/devices/5",
+      "url_template": "http://127.0.0.1:9003/devices/{device_id}",
+      "headers": {
+        "User-Agent": "schemathesis/4.24.3",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "rcbmDf"
+      },
+      "response": {
+        "status_code": 500,
+        "headers": {
+          "date": "Fri, 07 Aug 2026 00:22:21 GMT",
+          "server": "uvicorn",
+          "content-length": "76",
+          "content-type": "application/json"
+        },
+        "body": "{\"error\":{\"code\":\"internal_error\",\"message\":\"seeded fault: undeclared_500\"}}"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "not_a_server_error",
+          "status": "failure",
+          "message": "Server error"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 0.00022762499975215178,
+          "mode": "positive"
+        },
+        "components": {
+          "PATH": "positive"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Default positive test case",
+            "location": null,
+            "parameter": null,
+            "parameter_location": null,
+            "scenario": "default_positive_test"
+          }
+        },
+        "pool_draws": [
+          {
+            "location": "path",
+            "parameter_name": "device_id",
+            "resource_name": "Device",
+            "resource_field": "id",
+            "source_operation": "POST /devices",
+            "source_status": 201
+          }
+        ],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "constants_draws": [],
+        "raw_containers": {
+          "PATH": {
+            "device_id": 5
+          }
+        }
+      },
+      "path": "/devices/{device_id}",
+      "path_parameters": {
+        "device_id": "5"
+      },
+      "query": {},
+      "case_headers": {},
+      "cookies": {},
+      "case_body": {
+        "encoding": "none"
+      },
+      "media_type": null,
+      "parent_index": null
+    }
+  ]
+}

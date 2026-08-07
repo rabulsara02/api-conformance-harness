@@ -14,3 +14,6 @@ httpx==0.28.1
 # Contract validation + declarative test plans
 jsonschema==4.26.0
 PyYAML==6.0.3
+
+# Property-based / fuzz testing driven by the contract
+schemathesis==4.24.3

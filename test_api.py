@@ -331,12 +331,12 @@ def test_spec_declares_every_status_each_endpoint_can_return():
 
     expected = {
         ("/devices", "get"): {"200", "422"},
-        ("/devices", "post"): {"201", "409", "422"},
+        ("/devices", "post"): {"201", "400", "409", "422"},
         ("/devices/search", "get"): {"200", "422"},
         ("/devices/{device_id}", "get"): {"200", "404", "422"},
-        ("/devices/{device_id}", "put"): {"200", "404", "422"},
+        ("/devices/{device_id}", "put"): {"200", "400", "404", "422"},
         ("/devices/{device_id}", "delete"): {"204", "404", "422"},
-        ("/devices/{device_id}/status", "patch"): {"200", "404", "409", "422"},
+        ("/devices/{device_id}/status", "patch"): {"200", "400", "404", "409", "422"},
         ("/health", "get"): {"200"},
     }
 

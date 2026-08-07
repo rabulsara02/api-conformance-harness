@@ -67,6 +67,14 @@ _VALIDATION = {
     422: {"model": ErrorResponse, "description": "Request failed validation."}
 }
 
+# Found by property-based testing on Day 10, not by any hand-written case: a body
+# that is not valid JSON never reaches validation, so Starlette answers 400
+# before FastAPI can produce a 422. The service was right and the CONTRACT was
+# incomplete -- it promised 422 as the only failure mode for a bad body.
+_BAD_REQUEST = {
+    400: {"model": ErrorResponse, "description": "Request body was not valid JSON."}
+}
+
 
 @app.get("/health", tags=["meta"])
 def health() -> dict[str, str]:
@@ -121,7 +129,7 @@ def list_devices(
     "/devices",
     response_model=Device,
     status_code=status.HTTP_201_CREATED,
-    responses={**_CONFLICT, **_VALIDATION},
+    responses={**_BAD_REQUEST, **_CONFLICT, **_VALIDATION},
     tags=["devices"],
 )
 def create_device(payload: DeviceCreate, response: Response) -> Device:
@@ -211,7 +219,7 @@ def get_device(device_id: int) -> Device:
 @app.put(
     "/devices/{device_id}",
     response_model=Device,
-    responses={**_NOT_FOUND, **_VALIDATION},
+    responses={**_BAD_REQUEST, **_NOT_FOUND, **_VALIDATION},
     tags=["devices"],
 )
 def replace_device(device_id: int, payload: DeviceUpdate) -> Device:
@@ -265,7 +273,7 @@ def delete_device(device_id: int) -> Response:
 @app.patch(
     "/devices/{device_id}/status",
     response_model=Device,
-    responses={**_NOT_FOUND, **_CONFLICT, **_VALIDATION},
+    responses={**_BAD_REQUEST, **_NOT_FOUND, **_CONFLICT, **_VALIDATION},
     tags=["devices"],
 )
 def update_device_status(device_id: int, payload: StatusUpdate) -> Device:

@@ -23,7 +23,40 @@ to stop if you run short.
 
 ## Progress log (updated as we go)
 
-**Status: not started.**
+**Status: ✅ DAY 9 COMPLETE** (code), CI run pending an upstream incident.
+
+**Done-when gate met:** 139 tests passing and stable across back-to-back runs;
+bug sweep shows a clean healthy baseline and 6/6 detection; `results/run.json`
+records the config it ran with. Verified from a clean checkout of the committed
+tree, exactly as CI would.
+
+- **Snag — `harness/runner.py` was created empty (0 bytes).** Third paste failure
+  of the project. `ImportError: cannot import name 'run_case' from
+  'harness.runner'` — module found, name missing, which always means an empty or
+  partial file rather than a path problem. **New habit: `wc -l` any file over ~50
+  lines before running.**
+
+- **INCIDENT — CI did not run, and it was not our code.** The Day 9 push
+  (`8a5c285`) never triggered a workflow. Actions was enabled, the workflow file
+  unchanged since Day 1 and green for eight consecutive commits, the commit
+  landed, and the working tree was clean and in sync with origin.
+
+  *Diagnosis:* a `git archive HEAD` checkout of the committed tree — the same
+  thing CI does — ran **139 passed** locally. That ruled out our code entirely.
+  The cause was a **GitHub Actions incident**: webhook triggers throttled during
+  recovery, so push events were not creating workflow runs.
+
+  *The distinction worth keeping:* **"CI is red" and "CI never ran" look similar
+  in a commit list and have completely different causes.** Red means the code
+  failed. Absent means the alarm never armed. This is exactly the fourth category
+  the Day 14 classifier has to recognise — **`environment`** — occurring for real
+  rather than as a seeded scenario. Worth citing in an interview: the first
+  useful move was proving the failure was *not* ours.
+
+  *Change made as a result:* added `workflow_dispatch` to the workflow triggers,
+  giving a manual "Run workflow" button. With only `push`/`pull_request`, there
+  was no way to start a run when the triggering event never arrived. A CI system
+  with no manual trigger has a single point of failure in its own front door.
 
 ---
 

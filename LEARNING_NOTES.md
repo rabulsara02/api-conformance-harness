@@ -1587,6 +1587,138 @@ left state behind. Worth doing every time a write case is added.
 
 ---
 
-*Next: Day 10 primer — property-based testing and schemathesis. The validator
-checks the responses you asked for; the fuzzer invents the requests you didn't
-think to make.*
+---
+
+## Day 10 — Property-based testing, and the judgement of triage
+
+Full primer in `docs/DAY_10_CHECKLIST.md`; findings in `docs/FUZZ_FINDINGS.md`.
+
+### Concepts introduced
+
+**Property-based testing.** Instead of asserting on hand-picked examples, state a
+property that must hold for *all* valid inputs and let a tool generate many
+inputs trying to falsify it. Example-based testing finds bugs you thought of;
+property-based testing finds bugs you didn't.
+
+**Generation, shrinking, seeding.** *Generation*: input strategies derived from
+the schema — `minimum: 1, maximum: 100` produces values around those bounds.
+*Shrinking*: on failure, the tool simplifies the input to the smallest version
+that still fails, so you get "`id=-1` breaks it" instead of "`id=-849372910`
+breaks it" — the feature that makes findings usable rather than noise. *Seeding*:
+random but reproducible. A non-reproducible finding is nearly worthless: you fix
+something, rerun, see green, and cannot tell whether you fixed it or just drew
+different inputs.
+
+**Overlap with our validator is evidence, not waste.** schemathesis checks status
+codes, content types and response schemas — the same ground as the hand-written
+validator. Two independent implementations reading the same contract and agreeing
+is stronger evidence of correctness than either tool's own tests. Verified
+against three seeded bug modes; both reached the same verdict every time.
+
+**Why build both.** Ours is the *production path* — per-request in the harness,
+feeding the classifier, producing structured violations the reports consume.
+schemathesis is the *exploratory path* — generating adversarial inputs, a
+different and genuinely hard problem. Knowing what each is *for* is the answer to
+"why write your own?"
+
+**TRIAGE — the actual skill.** Running a fuzzer is easy; deciding what its output
+means is the job. Four verdicts: fix the service, fix the contract, accept and
+document, tool limitation. **A candidate who fixes everything a tool reports
+doesn't understand their system; one who ignores everything isn't testing.**
+Today split exactly 2–2.
+
+**Contract conformance vs protocol conformance.** Our harness answers "does this
+service honour its *OpenAPI contract*?" schemathesis also checks the *HTTP
+standard* — e.g. RFC 9110 requires `Allow` on a 405, which Starlette omits. Real,
+correctly reported, and out of scope. Drawing that line clearly is worth more
+than either panicking or hand-waving.
+
+### The two real findings
+
+**1. Undocumented `400` on malformed bodies.** A body that isn't valid JSON never
+reaches validation — Starlette answers 400 before FastAPI can produce 422. The
+contract declared 422 as the only failure mode for a bad body. **The service was
+right; the contract was incomplete.** No hand-written case caught it because
+every declarative case sends well-formed JSON — sending garbage bytes is
+something you have to think of.
+
+**2. Optional declared as nullable — the best find.** FastAPI renders
+`status: DeviceStatus | None = None` as `anyOf: [DeviceStatus, {"type": "null"}]`,
+declaring JSON null a valid *value*. **In a query string there is no JSON null**
+— `?status=null` is the four-character string `"null"` — so the contract promised
+something unrepresentable, and a client following the spec would get a 422.
+
+*Optional* means "may be omitted" (`required: false`, already correct).
+*Nullable* means "null is a legal value", which was never true. No FastAPI
+annotation avoids it (verified against plain, `Annotated` and `Query()` forms),
+so the correction lives in the export script — **deliberately narrow**: parameter
+schemas only, never bodies or responses, and only a two-branch anyOf with exactly
+one null. A tool that edits the oracle needs a very short reach.
+
+**The two accepted:** unknown query parameters ignored (deliberate — it's what
+makes additive changes non-breaking), and `405` without `Allow` (protocol, not
+contract).
+
+**Excluding checks on the command line rather than in a config** makes the triage
+decisions visible in the command itself instead of buried where nobody reads
+them.
+
+**The drift check earned its keep.** Changing the contract made
+`test_spec_drift.py` fail, forcing a deliberate re-pin and a reviewable diff —
+exactly the Day 5 sequence: find → understand → fix → re-pin → review. Two tests
+encoding the old status table also failed, which is correct: the contract
+changed, so the tests asserting it must change deliberately.
+
+**The freeze permits defect fixes.** Day 6 froze the service under test. Adding a
+`400` declaration is a *fix*, not a feature — the freeze is about scope creep,
+not about never touching the code again.
+
+### Day 10 flashcards
+
+1. **What is property-based testing?** — State a property that must hold for all
+   valid inputs; let a tool generate many inputs trying to falsify it.
+2. **What is shrinking and why does it matter?** — Automatic simplification of a
+   failing input to the smallest version that still fails. It's what makes
+   findings diagnosable.
+3. **Why seed the generator?** — Reproducibility. Without it you can't tell a fix
+   from a different random draw.
+4. **Why write your own validator if schemathesis exists?** — Different jobs:
+   ours runs per-request in the harness and feeds the classifier; schemathesis
+   generates adversarial inputs. And two implementations cross-check each other.
+5. **What did cross-validation prove?** — Both tools independently flagged the
+   same seeded defects, which is stronger evidence of correctness than either
+   tool's own test suite.
+6. **Give an example of a finding you did NOT fix, and why.** — `405` without
+   `Allow`: real per RFC 9110, but protocol conformance rather than contract
+   conformance, and out of scope for this harness.
+7. **What's the difference between optional and nullable?** — Optional means the
+   field may be omitted (`required: false`). Nullable means null is a legal
+   value. Conflating them made the contract promise something a query string
+   cannot express.
+8. **Why was the export-script correction scoped so narrowly?** — It edits the
+   oracle. A broad transformation could silently reshape what the harness
+   validates against — a worse defect than the one being fixed.
+9. **Why did two tests fail after fixing the contract?** — They encode the status
+   table. A contract change must force a deliberate test change, or the tests
+   aren't really asserting the contract.
+
+### Day 10 design decisions to defend
+
+- **Ran the fuzzer against the *pinned* contract**, not the live spec — same
+  anti-tautology argument as Day 5.
+- **Fixed two findings, accepted two, and wrote down why for all four.** The
+  write-up is the deliverable; the tool run is the easy part.
+- **Corrected the nullable defect in the export script rather than the app**,
+  because no FastAPI annotation can express it — and scoped the transformation as
+  tightly as possible.
+- **Named excluded checks on the command line**, so triage decisions are visible
+  rather than hidden in configuration.
+- **Kept fuzzing out of the per-push suite.** ~578 cases and ~30s is a nightly
+  job (Day 16), not a per-commit gate.
+- **Cross-validated against seeded bugs**, turning "my validator passes my tests"
+  into "an independent implementation agrees with my validator."
+
+---
+
+*Next: Day 11 primer — async I/O, HTTP proxying, and building the fault-injection
+proxy. Phase 3 begins: the work that distinguishes this project.*

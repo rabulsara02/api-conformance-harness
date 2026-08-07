@@ -1,0 +1,91 @@
+{
+  "operation": "GET /devices/{device_id}",
+  "method": "GET",
+  "path_template": "/devices/{device_id}",
+  "fingerprint": "5a349486",
+  "case_id": "9W1hLJ",
+  "code_sample": "curl -X GET http://127.0.0.1:9003/devices/21",
+  "sequence": [
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:9003/devices/21",
+      "url_template": "http://127.0.0.1:9003/devices/{device_id}",
+      "headers": {
+        "User-Agent": "schemathesis/4.24.3",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "9W1hLJ"
+      },
+      "response": {
+        "status_code": 200,
+        "headers": {
+          "date": "Fri, 07 Aug 2026 00:20:47 GMT",
+          "server": "uvicorn",
+          "content-type": "application/json",
+          "content-length": "31"
+        },
+        "body": "{\"id\": 21, \"status\": \"offline\"}"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "response_schema_conformance",
+          "status": "failure",
+          "message": "Response violates schema\n\n\"name\" is a required property\n\nValidated against the response schema for status code 200.\n\nSchema at /components/schemas/Device:\n\n    {\n        \"required\": [\n            \"id\",\n            \"name\",\n            \"status\"\n        ],\n        \"description\": \"One device in the registry.\\n\\n`Field(...)` -- the litera...\n        \"properties\": {\n            \"id\": {\n                \"description\": \"Unique identifier for the device, assigned by the...\n                \"examples\": [\n                    1\n                ],\n                \"title\": \"Id\",\n                \"type\": \"integer\"\n            },\n            \"name\": {\n                \"description\": \"Human-readable label for the device.\",\n                \"examples\": [\n        // Output truncated...\n    }\n\nValue:\n\n    {\n        \"id\": 21,\n        \"status\": \"offline\"\n    }"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 0.00026412500119477045,
+          "mode": "positive"
+        },
+        "components": {
+          "PATH": "positive"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Default positive test case",
+            "location": null,
+            "parameter": null,
+            "parameter_location": null,
+            "scenario": "default_positive_test"
+          }
+        },
+        "pool_draws": [
+          {
+            "location": "path",
+            "parameter_name": "device_id",
+            "resource_name": "Device",
+            "resource_field": "id",
+            "source_operation": "POST /devices",
+            "source_status": 201
+          }
+        ],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "constants_draws": [],
+        "raw_containers": {
+          "PATH": {
+            "device_id": 21
+          }
+        }
+      },
+      "path": "/devices/{device_id}",
+      "path_parameters": {
+        "device_id": "21"
+      },
+      "query": {},
+      "case_headers": {},
+      "cookies": {},
+      "case_body": {
+        "encoding": "none"
+      },
+      "media_type": null,
+      "parent_index": null
+    }
+  ]
+}

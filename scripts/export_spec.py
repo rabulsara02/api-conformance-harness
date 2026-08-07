@@ -31,6 +31,52 @@ from api.main import app
 # Repository root is this file's parent's parent.
 SPEC_PATH = pathlib.Path(__file__).resolve().parent.parent / "spec" / "openapi.json"
 
+def _tighten_optional_parameters(spec: dict) -> dict:
+    """
+    Correct FastAPI's over-declaration of optional query parameters.
+
+    FastAPI renders `status: DeviceStatus | None = None` as
+    `anyOf: [DeviceStatus, {"type": "null"}]`, which declares JSON null as a
+    VALID VALUE. In a query string there is no JSON null -- `?status=null` is the
+    four-character string "null" -- so the contract promises something that
+    cannot be represented, and a client reading the spec would send it and get a
+    422.
+
+    OPTIONAL is not the same as NULLABLE. "May be omitted" is expressed by
+    `required: false`, which FastAPI already sets correctly. The null branch is
+    simply wrong, and no FastAPI-level annotation removes it (verified against
+    the plain, Annotated, and Query forms), so the correction happens here.
+
+    Found by property-based testing on Day 10.
+
+    DELIBERATELY NARROW: touches only `parameters`, never request bodies or
+    response schemas, and only collapses a two-branch anyOf where exactly one
+    branch is null. A broader transformation could silently reshape the contract
+    the harness validates against -- which would be a far worse defect than the
+    one it fixes. A tool that edits the oracle needs a very short reach.
+    """
+    for path_item in spec.get("paths", {}).values():
+        for operation in path_item.values():
+            if not isinstance(operation, dict):
+                continue
+            for parameter in operation.get("parameters", []):
+                schema = parameter.get("schema")
+                if not isinstance(schema, dict):
+                    continue
+
+                branches = schema.get("anyOf")
+                if not isinstance(branches, list) or len(branches) != 2:
+                    continue
+
+                non_null = [b for b in branches if b.get("type") != "null"]
+                if len(non_null) != 1:
+                    continue
+
+                siblings = {k: v for k, v in schema.items() if k != "anyOf"}
+                parameter["schema"] = {**non_null[0], **siblings}
+
+    return spec
+
 
 def render_spec() -> str:
     """
@@ -45,7 +91,7 @@ def render_spec() -> str:
     The trailing newline keeps the file POSIX-clean and stops diffs from
     reporting "no newline at end of file" noise.
     """
-    return json.dumps(app.openapi(), indent=2, sort_keys=True) + "\n"
+    return json.dumps(_tighten_optional_parameters(app.openapi()), indent=2, sort_keys=True) + "\n"
 
 
 def main() -> int:

@@ -193,7 +193,7 @@ def test_declared_statuses_matches_the_contract(contract: dict):
         "404",
         "422",
     }
-    assert declared_statuses(contract, "POST", "/devices") == {"201", "409", "422"}
+    assert declared_statuses(contract, "POST", "/devices") == {"201", "400", "409", "422"}
 
 
 def test_response_schema_returns_a_resolved_schema(contract: dict):

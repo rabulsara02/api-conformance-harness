@@ -1,0 +1,91 @@
+{
+  "operation": "GET /devices/{device_id}",
+  "method": "GET",
+  "path_template": "/devices/{device_id}",
+  "fingerprint": "aac481a6",
+  "case_id": "ohLL0o",
+  "code_sample": "curl -X GET http://127.0.0.1:9003/devices/5",
+  "sequence": [
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:9003/devices/5",
+      "url_template": "http://127.0.0.1:9003/devices/{device_id}",
+      "headers": {
+        "User-Agent": "schemathesis/4.24.3",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "ohLL0o"
+      },
+      "response": {
+        "status_code": 200,
+        "headers": {
+          "date": "Fri, 07 Aug 2026 00:21:27 GMT",
+          "server": "uvicorn",
+          "content-type": "application/json",
+          "content-length": "106"
+        },
+        "body": "{\"id\": 5, \"name\": \"000000000000000000000000000000000000000000000000000000000000000\", \"status\": \"exploded\"}"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "response_schema_conformance",
+          "status": "failure",
+          "message": "Response violates schema\n\n\"exploded\" is not one of \"online\", \"offline\" or \"degraded\"\n\nValidated against the response schema for status code 200.\n\nSchema at /components/schemas/DeviceStatus:\n\n    {\n        \"enum\": [\n            \"online\",\n            \"offline\",\n            \"degraded\"\n        ],\n        \"description\": \"The only values a device's `status` field may take.\\n\\nIn...\n        \"title\": \"DeviceStatus\",\n        \"type\": \"string\"\n    }\n\nValue:\n\n    \"exploded\""
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 0.0002492910007276805,
+          "mode": "positive"
+        },
+        "components": {
+          "PATH": "positive"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Default positive test case",
+            "location": null,
+            "parameter": null,
+            "parameter_location": null,
+            "scenario": "default_positive_test"
+          }
+        },
+        "pool_draws": [
+          {
+            "location": "path",
+            "parameter_name": "device_id",
+            "resource_name": "Device",
+            "resource_field": "id",
+            "source_operation": "POST /devices",
+            "source_status": 201
+          }
+        ],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "constants_draws": [],
+        "raw_containers": {
+          "PATH": {
+            "device_id": 5
+          }
+        }
+      },
+      "path": "/devices/{device_id}",
+      "path_parameters": {
+        "device_id": "5"
+      },
+      "query": {},
+      "case_headers": {},
+      "cookies": {},
+      "case_body": {
+        "encoding": "none"
+      },
+      "media_type": null,
+      "parent_index": null
+    }
+  ]
+}

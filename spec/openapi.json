@@ -278,6 +278,16 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request body was not valid JSON."
+          },
           "409": {
             "content": {
               "application/json": {
@@ -315,15 +325,8 @@
             "name": "name_contains",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Name Contains"
+              "title": "Name Contains",
+              "type": "string"
             }
           },
           {
@@ -331,14 +334,7 @@
             "name": "status",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "$ref": "#/components/schemas/DeviceStatus"
-                },
-                {
-                  "type": "null"
-                }
-              ],
+              "$ref": "#/components/schemas/DeviceStatus",
               "title": "Status"
             }
           }
@@ -506,6 +502,16 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request body was not valid JSON."
+          },
           "404": {
             "content": {
               "application/json": {
@@ -568,6 +574,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request body was not valid JSON."
           },
           "404": {
             "content": {
