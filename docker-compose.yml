@@ -28,9 +28,17 @@ services:
   #   TCP-LISTEN:8080  = accept connections on port 8080
   #   fork             = handle each connection in its own child process
   #   reuseaddr        = allow immediate rebinding after restart
+  # The fault-injection point -- now our own async proxy rather than socat.
+  # Transparent by default; set PROXY_FAULT to make it misbehave.
   proxy:
-    image: alpine/socat
-    command: TCP-LISTEN:8080,fork,reuseaddr TCP:api:8000
+    build: .
+    command: python -m proxy.server --host 0.0.0.0 --port 8080
+    environment:
+      PROXY_UPSTREAM: http://api:8000
+      PROXY_FAULT: ${PROXY_FAULT:-none}
+      PROXY_PROBABILITY: ${PROXY_PROBABILITY:-1.0}
+      PROXY_SEED: ${PROXY_SEED:-1234}
+      PROXY_LATENCY_MS: ${PROXY_LATENCY_MS:-800}
     depends_on:
       - api
     ports:
