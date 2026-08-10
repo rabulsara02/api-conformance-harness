@@ -1720,5 +1720,138 @@ not about never touching the code again.
 
 ---
 
-*Next: Day 11 primer — async I/O, HTTP proxying, and building the fault-injection
-proxy. Phase 3 begins: the work that distinguishes this project.*
+---
+
+## Day 11 — The fault-injection proxy
+
+Full primer in `docs/DAY_11_CHECKLIST.md`. Phase 3 begins.
+
+### Concepts introduced
+
+**The fourth injection site.** Day 6 seeds *service* bugs in the API; Day 9's
+plans can carry *test* bugs; the proxy produces *environment* failures — and,
+from Day 12, *flakes*. Four categories, four separate places they originate. That
+separation is what makes the Day 14 accuracy figure meaningful rather than
+circular.
+
+**Same four faults as project 1, moved onto the wire.** delay → `latency`,
+malformed reply → `corrupt_body`, dropout → `drop`, wrong-state → `error_code`.
+Moving them from inside the device to the network path is *more* realistic: in
+real systems most flakiness comes from the network, not the service.
+
+**A forward proxy, mechanically.** Accept a TCP connection, read the HTTP
+request, open a connection upstream, forward, read the response, write it back.
+Every fault is a modification of one of those six steps. Structurally identical
+to project 1's simulator reading AT commands off a socket — different framing
+rules, same shape.
+
+**HTTP framing, three rules.** Lines end with `\r\n`; a blank line ends the
+headers; `Content-Length` says how many body bytes follow. (`Transfer-Encoding:
+chunked` is the other mode; we sidestep it.) **Change a body, fix
+`Content-Length`** — the Day 6 lesson, now on the other side of the wire.
+
+**async and the event loop.** A proxy spends nearly all its time *waiting*, so
+blocking code would need a thread per connection. `await` means "this will take a
+while; go run something else." Two traps: an un-awaited `async def` returns a
+coroutine that never runs and raises nothing; and a blocking `time.sleep` freezes
+the *entire* loop, so injected latency would hit requests that were never
+selected for it. Use `await asyncio.sleep`. Same ASGI-vs-WSGI point as Day 3,
+now from the implementer's side.
+
+**Two named simplifications.** `Connection: close` (one request per connection,
+avoiding keep-alive and chunked framing) and no streaming (buffer the whole
+response, which is what makes precise truncation easy). Both are real costs at
+production scale and irrelevant at 22 cases — worth stating rather than hiding.
+
+**Configuration, not a control endpoint.** Env vars at startup, exactly as Day 6.
+A `POST /proxy/fault` route would be a control plane the harness could
+accidentally depend on, and would make "what was injected" a runtime conversation
+instead of a recorded fact.
+
+**A FAULT IS ONLY A FAILURE PAST A THRESHOLD.** Measured, running all 22 cases:
+
+| injected latency | timeout | result |
+|---|---|---|
+| 50 ms | 3000 ms | 22 pass — invisible |
+| 500 ms | 3000 ms | 22 pass — still invisible |
+| 2000 ms | 1000 ms | 0 pass — everything times out |
+
+Latency alone is not a failure; it becomes one when it crosses somebody's
+threshold. Obvious written down, constantly forgotten in practice. **And the
+boundary region is where flakiness lives** — latency near the timeout produces a
+test that sometimes passes and sometimes doesn't.
+
+**THE DESIGN RESULT THAT MAKES DAY 12 POSSIBLE.** Running the suite three times
+through a `drop` proxy at probability 0.3:
+
+| | run 1 | run 2 | run 3 | identical? |
+|---|---|---|---|---|
+| Proxy restarted each run | 7 failed | 7 | 7 | **yes** |
+| Proxy stays up | 7 failed | 7 | 7 | **no — 15 cases flipped** |
+
+Restarting resets the generator, so every run replays the first: the same tests
+fail every time, which is a **deterministic failure, not a flake**. Leave the
+proxy running and the pattern advances — same *number* of failures, *different*
+tests. That is the definition of a flaky test, manufactured on purpose.
+
+And the experiment stays reproducible because all N runs derive from one seed:
+**reproducible in aggregate, non-deterministic per test.** Exactly the property
+Day 13's statistics require. Rule for Day 12: *start the proxy once, run the
+suite N times against it.*
+
+**Why `drop` justified building a real proxy.** You cannot honestly simulate a
+connection dying mid-response from inside the client. There is no HTTP response
+to inspect — categorically different from an error response, and the reason the
+harness distinguishes "answered badly" from "did not answer".
+
+**Dependency inversion, collected.** The full 22-case suite ran through the proxy
+with **zero changes** to `validator.py`, `runner.py`, `plan.py`, or any YAML
+case. A whole network hop appeared and nothing above the transport noticed. That
+is the concrete answer to "how do you know the abstraction was right?"
+
+### Day 11 flashcards
+
+1. **What does a forward proxy do, mechanically?** — Accepts a client connection,
+   reads the request, opens an upstream connection, forwards, reads the response,
+   writes it back.
+2. **How is HTTP framed?** — CRLF line endings; a blank line ends the headers;
+   `Content-Length` gives the body size.
+3. **Why must `Content-Length` change when you truncate a body?** — Otherwise the
+   client waits for bytes that never arrive.
+4. **Why asyncio rather than threads?** — A proxy is almost entirely waiting; one
+   event loop can hold many connections without a thread each.
+5. **What happens if you use `time.sleep` in async code?** — It blocks the whole
+   loop, so the delay hits connections that were never selected for it.
+6. **Why does `drop` require a real network proxy?** — A connection dying
+   mid-response cannot be faked in-process; there is no response object at all.
+7. **Is latency a failure?** — Only past a threshold. Below the timeout it is
+   invisible; near it, it produces flakiness.
+8. **Why does proxy lifetime matter?** — Restarting resets the seeded generator,
+   replaying the same faults and producing deterministic failures. Leaving it up
+   advances the pattern, producing genuine flakiness.
+9. **How is a flake experiment reproducible if individual tests are
+   non-deterministic?** — All runs derive from one seed, so the *aggregate*
+   replays exactly while each test still varies.
+10. **How did you prove the Transport abstraction was right?** — Added a network
+    hop with fault injection and changed nothing above the transport layer.
+
+### Day 11 design decisions to defend
+
+- **Wrote the proxy rather than using mitmproxy.** Owning HTTP framing and the
+  fault logic is the point; a config exercise would not have taught it, and
+  `drop` needed byte-level control anyway.
+- **Env-var configuration, no control endpoint.** Keeps the fault switch out of
+  anything the harness could depend on.
+- **Seeded decisions, recorded.** Reproducibility is a precondition for every
+  number Days 13–14 will report.
+- **Fault modes kept non-overlapping** — `error_code` returns *well-formed* JSON
+  on purpose, so a failure has exactly one correct explanation.
+- **Proxy tolerates client disconnects instead of crashing.** A proxy that dies
+  on a normal disconnect would inject faults nobody asked for.
+- **Named the two simplifications** (`Connection: close`, no streaming) rather
+  than letting them be discovered.
+
+---
+
+*Next: Day 12 primer — the repeat-runner, per-test history, and why flakiness
+cannot be detected from a single run.*
